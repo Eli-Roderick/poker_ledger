@@ -90,38 +90,33 @@ class SessionRepository {
     return (data as List).map((e) => Session.fromMap(e)).toList();
   }
 
-  /// Helper to fetch owner display name
-  Future<String> _getOwnerName(String oderId) async {
-    final profile = await _client
+  /// Helper to fetch multiple owner display names in one query
+  Future<Map<String, String>> _getOwnerNames(List<String> ownerIds) async {
+    if (ownerIds.isEmpty) return {};
+    final profiles = await _client
         .from('profiles')
-        .select('display_name')
-        .eq('id', oderId)
-        .maybeSingle();
-    return profile?['display_name'] as String? ?? 'Unknown';
+        .select('id, display_name')
+        .inFilter('id', ownerIds);
+    return {
+      for (final p in profiles)
+        p['id'] as String: p['display_name'] as String? ?? 'Unknown'
+    };
   }
 
   /// List all sessions visible to user (own + shared via groups)
   Future<List<SessionWithOwner>> listAllVisibleSessions() async {
     final userId = _client.auth.currentUser!.id;
     
-    // Get user's own sessions
-    final ownSessions = await _client
-        .from('sessions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('started_at', ascending: false);
+    // Run parallel queries for better performance
+    final results = await Future.wait([
+      _client.from('sessions').select('*').eq('user_id', userId).order('started_at', ascending: false),
+      _client.from('groups').select('id').eq('owner_id', userId),
+      _client.from('group_members').select('group_id').eq('user_id', userId),
+    ]);
     
-    // Get sessions shared to groups user is in
-    // First get group IDs user belongs to
-    final ownedGroups = await _client
-        .from('groups')
-        .select('id')
-        .eq('owner_id', userId);
-    
-    final memberGroups = await _client
-        .from('group_members')
-        .select('group_id')
-        .eq('user_id', userId);
+    final ownSessions = results[0] as List;
+    final ownedGroups = results[1] as List;
+    final memberGroups = results[2] as List;
     
     final groupIds = <int>{
       ...ownedGroups.map((g) => g['id'] as int),
@@ -161,12 +156,15 @@ class SessionRepository {
             .inFilter('id', sessionIds)
             .order('started_at', ascending: false);
         
+        // Batch fetch owner names in one query
+        final ownerIds = sharedSessions.map((s) => s['user_id'] as String).toSet().toList();
+        final ownerNames = await _getOwnerNames(ownerIds);
+        
         for (final s in sharedSessions) {
           final ownerId = s['user_id'] as String;
-          final ownerName = await _getOwnerName(ownerId);
           result.add(SessionWithOwner(
             session: Session.fromMap(s),
-            ownerName: ownerName,
+            ownerName: ownerNames[ownerId] ?? 'Unknown',
             isOwner: false,
           ));
         }
@@ -197,14 +195,21 @@ class SessionRepository {
         .inFilter('id', sessionIds)
         .order('started_at', ascending: false);
     
+    // Batch fetch owner names (excluding current user)
+    final otherOwnerIds = sessions
+        .map((s) => s['user_id'] as String)
+        .where((id) => id != userId)
+        .toSet()
+        .toList();
+    final ownerNames = await _getOwnerNames(otherOwnerIds);
+    
     final result = <SessionWithOwner>[];
     for (final s in sessions) {
       final ownerId = s['user_id'] as String;
       final isOwner = ownerId == userId;
-      final ownerName = isOwner ? 'You' : await _getOwnerName(ownerId);
       result.add(SessionWithOwner(
         session: Session.fromMap(s),
-        ownerName: ownerName,
+        ownerName: isOwner ? 'You' : (ownerNames[ownerId] ?? 'Unknown'),
         isOwner: isOwner,
       ));
     }
@@ -249,23 +254,18 @@ class SessionRepository {
         .neq('user_id', userId)
         .order('started_at', ascending: false);
     
-    // Fetch owner names separately
-    final result = <SessionWithOwner>[];
-    for (final s in sessions) {
+    // Batch fetch owner names in one query
+    final ownerIds = sessions.map((s) => s['user_id'] as String).toSet().toList();
+    final ownerNames = await _getOwnerNames(ownerIds);
+    
+    return sessions.map((s) {
       final ownerId = s['user_id'] as String;
-      final profile = await _client
-          .from('profiles')
-          .select('display_name')
-          .eq('id', ownerId)
-          .maybeSingle();
-      
-      result.add(SessionWithOwner(
+      return SessionWithOwner(
         session: Session.fromMap(s),
-        ownerName: profile?['display_name'] as String? ?? 'Unknown',
+        ownerName: ownerNames[ownerId] ?? 'Unknown',
         isOwner: false,
-      ));
-    }
-    return result;
+      );
+    }).toList();
   }
 
   Future<List<Map<String, Object?>>> listQuickAddSumsByPlayer() async {
