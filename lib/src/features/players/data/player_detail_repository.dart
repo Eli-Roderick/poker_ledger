@@ -1,59 +1,65 @@
-import 'package:sqflite/sqflite.dart';
-
-import '../../../db/app_database.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PlayerDetailRepository {
-  Future<Database> get _db async => AppDatabase.instance();
+  final SupabaseClient _client = Supabase.instance.client;
 
   Future<void> addQuickAdd({required int playerId, required int amountCents, String? note}) async {
-    final db = await _db;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await db.insert('quick_add_entries', {
+    await _client.from('quick_add_entries').insert({
+      'user_id': _client.auth.currentUser!.id,
       'player_id': playerId,
       'amount_cents': amountCents,
       'note': note,
-      'created_at': now,
     });
   }
 
   Future<List<Map<String, Object?>>> listQuickAdds(int playerId) async {
-    final db = await _db;
-    return db.query(
-      'quick_add_entries',
-      where: 'player_id = ?',
-      whereArgs: [playerId],
-      orderBy: 'created_at DESC',
-    );
+    final data = await _client
+        .from('quick_add_entries')
+        .select()
+        .eq('player_id', playerId)
+        .order('created_at', ascending: false);
+    return List<Map<String, Object?>>.from(data);
   }
 
   Future<void> deleteQuickAdd(int id) async {
-    final db = await _db;
-    await db.delete('quick_add_entries', where: 'id = ?', whereArgs: [id]);
+    await _client.from('quick_add_entries').delete().eq('id', id);
   }
 
-  // Each row: { session_id, session_name, started_at, net_cents }
   Future<List<Map<String, Object?>>> listPlayerSessionNets(int playerId) async {
-    final db = await _db;
-    return db.rawQuery('''
-      SELECT s.id as session_id,
-             s.name as session_name,
-             s.started_at as started_at,
-             COALESCE(sp.cash_out_cents, 0) - COALESCE(sp.buy_in_cents_total, 0) as net_cents
-      FROM session_players sp
-      JOIN sessions s ON s.id = sp.session_id
-      WHERE sp.player_id = ?
-      ORDER BY s.started_at DESC
-    ''', [playerId]);
+    final data = await _client
+        .from('session_players')
+        .select('session_id, buy_in_cents_total, cash_out_cents, sessions(id, name, started_at)')
+        .eq('player_id', playerId);
+    
+    return (data as List).map((row) {
+      final session = row['sessions'] as Map<String, dynamic>?;
+      final buyIn = row['buy_in_cents_total'] as int? ?? 0;
+      final cashOut = row['cash_out_cents'] as int? ?? 0;
+      return {
+        'session_id': row['session_id'],
+        'session_name': session?['name'],
+        'started_at': session?['started_at'],
+        'net_cents': cashOut - buyIn,
+      };
+    }).toList()
+      ..sort((a, b) {
+        final aDate = a['started_at'] as String?;
+        final bDate = b['started_at'] as String?;
+        if (aDate == null || bDate == null) return 0;
+        return bDate.compareTo(aDate);
+      });
   }
 
   Future<int> totalBuyInCents(int playerId) async {
-    final db = await _db;
-    final rows = await db.rawQuery('''
-      SELECT COALESCE(SUM(sp.buy_in_cents_total), 0) AS total
-      FROM session_players sp
-      WHERE sp.player_id = ?
-    ''', [playerId]);
-    final total = rows.isNotEmpty ? (rows.first['total'] as int? ?? 0) : 0;
+    final data = await _client
+        .from('session_players')
+        .select('buy_in_cents_total')
+        .eq('player_id', playerId);
+    
+    int total = 0;
+    for (final row in data) {
+      total += (row['buy_in_cents_total'] as int? ?? 0);
+    }
     return total;
   }
 }

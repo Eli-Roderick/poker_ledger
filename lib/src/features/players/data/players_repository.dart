@@ -1,22 +1,20 @@
-import 'package:sqflite/sqflite.dart';
-
-import '../../../db/app_database.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/player.dart';
 
 class PlayersRepository {
-  Future<Database> get _db async => AppDatabase.instance();
+  final SupabaseClient _client = Supabase.instance.client;
 
   Future<List<Player>> getAll({bool includeDeactivated = false, bool deactivatedOnly = false}) async {
-    final db = await _db;
-    final where = deactivatedOnly
-        ? 'active = 0'
-        : (includeDeactivated ? null : 'active = 1');
-    final rows = await db.query(
-      'players',
-      where: where,
-      orderBy: 'created_at DESC',
-    );
-    return rows.map((e) => Player.fromMap(e)).toList();
+    var query = _client.from('players').select();
+    
+    if (deactivatedOnly) {
+      query = query.eq('active', false);
+    } else if (!includeDeactivated) {
+      query = query.eq('active', true);
+    }
+    
+    final data = await query.order('created_at', ascending: false);
+    return (data as List).map((e) => Player.fromMap(e)).toList();
   }
 
   Future<Player> add({
@@ -25,33 +23,22 @@ class PlayersRepository {
     String? phone,
     String? notes,
   }) async {
-    final db = await _db;
-    final now = DateTime.now();
-    final id = await db.insert('players', {
+    final data = await _client.from('players').insert({
+      'user_id': _client.auth.currentUser!.id,
       'name': name,
       'email': email,
       'phone': phone,
       'notes': notes,
-      'created_at': now.millisecondsSinceEpoch,
-    });
-    return Player(
-      id: id,
-      name: name,
-      email: email,
-      phone: phone,
-      notes: notes,
-      createdAt: now,
-    );
+    }).select().single();
+    return Player.fromMap(data);
   }
 
   Future<void> delete(int id) async {
-    final db = await _db;
-    await db.delete('players', where: 'id = ?', whereArgs: [id]);
+    await _client.from('players').delete().eq('id', id);
   }
 
   Future<void> setActive({required int id, required bool active}) async {
-    final db = await _db;
-    await db.update('players', {'active': active ? 1 : 0}, where: 'id = ?', whereArgs: [id]);
+    await _client.from('players').update({'active': active}).eq('id', id);
   }
 
   Future<Player> update({
@@ -61,19 +48,12 @@ class PlayersRepository {
     String? phone,
     String? notes,
   }) async {
-    final db = await _db;
-    await db.update(
-      'players',
-      {
-        'name': name,
-        'email': email,
-        'phone': phone,
-        'notes': notes,
-      },
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    final rows = await db.query('players', where: 'id = ?', whereArgs: [id], limit: 1);
-    return Player.fromMap(rows.first);
+    final data = await _client.from('players').update({
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'notes': notes,
+    }).eq('id', id).select().single();
+    return Player.fromMap(data);
   }
 }

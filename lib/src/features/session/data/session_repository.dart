@@ -1,156 +1,123 @@
-import 'package:sqflite/sqflite.dart';
-
-import '../../../db/app_database.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 import '../../players/domain/player.dart';
 import '../domain/session_models.dart';
 
 class SessionRepository {
-  Future<Database> get _db async => AppDatabase.instance();
+  final SupabaseClient _client = Supabase.instance.client;
 
-  // Create a new session if none open; otherwise return the current open session.
   Future<Session> getOrCreateOpenSession() async {
-    final db = await _db;
-    final rows = await db.query('sessions', where: 'finalized = 0', orderBy: 'started_at DESC', limit: 1);
-    if (rows.isNotEmpty) return Session.fromMap(rows.first);
-    final now = DateTime.now();
-    final id = await db.insert('sessions', {
+    final data = await _client
+        .from('sessions')
+        .select()
+        .eq('finalized', false)
+        .order('started_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    
+    if (data != null) return Session.fromMap(data);
+    
+    final newSession = await _client.from('sessions').insert({
+      'user_id': _client.auth.currentUser!.id,
       'name': null,
-      'started_at': now.millisecondsSinceEpoch,
-      'ended_at': null,
-      'finalized': 0,
-    });
-    return Session(id: id, name: null, startedAt: now, endedAt: null, finalized: false);
+      'finalized': false,
+    }).select().single();
+    return Session.fromMap(newSession);
   }
 
   Future<void> updateSettlementDone({required int sessionPlayerId, required bool done}) async {
-    final db = await _db;
-    await db.update(
-      'session_players',
-      {'settlement_done': done ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [sessionPlayerId],
-    );
+    await _client.from('session_players').update({'settlement_done': done}).eq('id', sessionPlayerId);
   }
 
   Future<void> updatePaidUpfront({required int sessionPlayerId, required bool paidUpfront}) async {
-    final db = await _db;
-    await db.update(
-      'session_players',
-      {'paid_upfront': paidUpfront ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [sessionPlayerId],
-    );
+    await _client.from('session_players').update({'paid_upfront': paidUpfront}).eq('id', sessionPlayerId);
   }
 
   Future<void> setSettlementMode({required int sessionId, required String mode}) async {
-    final db = await _db;
-    await db.update('sessions', {'settlement_mode': mode}, where: 'id = ?', whereArgs: [sessionId]);
+    await _client.from('sessions').update({'settlement_mode': mode}).eq('id', sessionId);
   }
 
   Future<void> setBanker({required int sessionId, required int? bankerSessionPlayerId}) async {
-    final db = await _db;
-    await db.update('sessions', {'banker_session_player_id': bankerSessionPlayerId},
-        where: 'id = ?', whereArgs: [sessionId]);
+    await _client.from('sessions').update({'banker_session_player_id': bankerSessionPlayerId}).eq('id', sessionId);
   }
 
   Future<void> updateCashOut({required int sessionPlayerId, required int? cashOutCents}) async {
-    final db = await _db;
-    await db.update(
-      'session_players',
-      {'cash_out_cents': cashOutCents},
-      where: 'id = ?',
-      whereArgs: [sessionPlayerId],
-    );
+    await _client.from('session_players').update({'cash_out_cents': cashOutCents}).eq('id', sessionPlayerId);
   }
 
   Future<void> deleteSession(int sessionId) async {
-    final db = await _db;
-    await db.delete('sessions', where: 'id = ?', whereArgs: [sessionId]);
+    await _client.from('sessions').delete().eq('id', sessionId);
   }
 
   Future<void> deleteSessionPlayer(int sessionPlayerId) async {
-    final db = await _db;
-    await db.transaction((txn) async {
-      // Null out banker if this participant is currently set as banker
-      await txn.update(
-        'sessions',
-        {'banker_session_player_id': null},
-        where: 'banker_session_player_id = ?',
-        whereArgs: [sessionPlayerId],
-      );
-      // Remove related rebuys (if FK doesn't cascade)
-      await txn.delete('rebuys', where: 'session_player_id = ?', whereArgs: [sessionPlayerId]);
-      // Finally remove the participant
-      await txn.delete('session_players', where: 'id = ?', whereArgs: [sessionPlayerId]);
-    });
+    // Clear banker reference first
+    await _client.from('sessions').update({'banker_session_player_id': null}).eq('banker_session_player_id', sessionPlayerId);
+    // Delete the session player (rebuys will cascade)
+    await _client.from('session_players').delete().eq('id', sessionPlayerId);
   }
 
   Future<Session> createSession({String? name}) async {
-    final db = await _db;
-    final now = DateTime.now();
-    final id = await db.insert('sessions', {
+    final data = await _client.from('sessions').insert({
+      'user_id': _client.auth.currentUser!.id,
       'name': name,
-      'started_at': now.millisecondsSinceEpoch,
-      'ended_at': null,
-      'finalized': 0,
-    });
-    return Session(id: id, name: name, startedAt: now, endedAt: null, finalized: false);
+      'finalized': false,
+    }).select().single();
+    return Session.fromMap(data);
   }
 
   Future<void> renameSession({required int sessionId, required String? name}) async {
-    final db = await _db;
-    await db.update('sessions', {'name': name}, where: 'id = ?', whereArgs: [sessionId]);
+    await _client.from('sessions').update({'name': name}).eq('id', sessionId);
   }
 
   Future<void> finalizeSession(int sessionId) async {
-    final db = await _db;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    // Only update if not already finalized; keep existing ended_at if present.
-    await db.rawUpdate(
-      'UPDATE sessions SET finalized = 1, ended_at = COALESCE(ended_at, ?) WHERE id = ? AND finalized = 0',
-      [now, sessionId],
-    );
+    await _client.from('sessions').update({
+      'finalized': true,
+      'ended_at': DateTime.now().toIso8601String(),
+    }).eq('id', sessionId).eq('finalized', false);
   }
 
   Future<List<Session>> listSessions() async {
-    final db = await _db;
-    final rows = await db.query('sessions', orderBy: 'started_at DESC');
-    return rows.map((e) => Session.fromMap(e)).toList();
+    final data = await _client.from('sessions').select().order('started_at', ascending: false);
+    return (data as List).map((e) => Session.fromMap(e)).toList();
   }
 
   Future<Session?> getSessionById(int id) async {
-    final db = await _db;
-    final rows = await db.query('sessions', where: 'id = ?', whereArgs: [id], limit: 1);
-    if (rows.isEmpty) return null;
-    return Session.fromMap(rows.first);
+    final data = await _client.from('sessions').select().eq('id', id).maybeSingle();
+    if (data == null) return null;
+    return Session.fromMap(data);
   }
 
-  // Analytics helper: total quick-add cents per player
   Future<List<Map<String, Object?>>> listQuickAddSumsByPlayer() async {
-    final db = await _db;
-    return db.rawQuery('''
-      SELECT qe.player_id, COALESCE(SUM(qe.amount_cents), 0) as total_cents
-      FROM quick_add_entries qe
-      GROUP BY qe.player_id
-    ''');
+    final data = await _client.from('quick_add_entries').select('player_id, amount_cents');
+    
+    // Group by player_id and sum
+    final Map<int, int> sums = {};
+    for (final row in data) {
+      final playerId = row['player_id'] as int;
+      final amount = row['amount_cents'] as int;
+      sums[playerId] = (sums[playerId] ?? 0) + amount;
+    }
+    
+    return sums.entries.map((e) => {'player_id': e.key, 'total_cents': e.value}).toList();
   }
 
   Future<List<Player>> getAllPlayers({bool activeOnly = false}) async {
-    final db = await _db;
-    final rows = await db.query(
-      'players',
-      where: activeOnly ? 'active = 1' : null,
-      orderBy: 'name COLLATE NOCASE',
-    );
-    return rows.map((e) => Player.fromMap(e)).toList();
+    var query = _client.from('players').select();
+    if (activeOnly) {
+      query = query.eq('active', true);
+    }
+    final data = await query.order('name');
+    return (data as List).map((e) => Player.fromMap(e)).toList();
   }
 
   Future<SessionPlayer?> getSessionPlayer(int sessionId, int playerId) async {
-    final db = await _db;
-    final rows = await db.query('session_players',
-        where: 'session_id = ? AND player_id = ?', whereArgs: [sessionId, playerId], limit: 1);
-    if (rows.isEmpty) return null;
-    return SessionPlayer.fromMap(rows.first);
+    final data = await _client
+        .from('session_players')
+        .select()
+        .eq('session_id', sessionId)
+        .eq('player_id', playerId)
+        .maybeSingle();
+    if (data == null) return null;
+    return SessionPlayer.fromMap(data);
   }
 
   Future<SessionPlayer> addPlayerToSession({
@@ -159,48 +126,51 @@ class SessionRepository {
     required int initialBuyInCents,
     required bool paidUpfront,
   }) async {
-    final db = await _db;
-    final id = await db.insert('session_players', {
+    final data = await _client.from('session_players').insert({
       'session_id': sessionId,
       'player_id': playerId,
       'buy_in_cents_total': initialBuyInCents,
-      'paid_upfront': paidUpfront ? 1 : 0,
-    });
-    return SessionPlayer(
-      id: id,
-      sessionId: sessionId,
-      playerId: playerId,
-      buyInCentsTotal: initialBuyInCents,
-      paidUpfront: paidUpfront,
-    );
+      'paid_upfront': paidUpfront,
+    }).select().single();
+    return SessionPlayer.fromMap(data);
   }
 
   Future<void> addRebuy({required int sessionPlayerId, required int amountCents}) async {
-    final db = await _db;
-    final now = DateTime.now();
-    await db.insert('rebuys', {
+    // Insert rebuy
+    await _client.from('rebuys').insert({
       'session_player_id': sessionPlayerId,
       'amount_cents': amountCents,
-      'created_at': now.millisecondsSinceEpoch,
     });
-    // update aggregate total on session_players
-    await db.rawUpdate(
-      'UPDATE session_players SET buy_in_cents_total = buy_in_cents_total + ? WHERE id = ?',
-      [amountCents, sessionPlayerId],
-    );
+    
+    // Get current total and update
+    final sp = await _client.from('session_players').select('buy_in_cents_total').eq('id', sessionPlayerId).single();
+    final currentTotal = sp['buy_in_cents_total'] as int? ?? 0;
+    await _client.from('session_players').update({
+      'buy_in_cents_total': currentTotal + amountCents,
+    }).eq('id', sessionPlayerId);
   }
 
   Future<List<Map<String, Object?>>> listSessionPlayersWithNames(int sessionId) async {
-    final db = await _db;
-    final rows = await db.rawQuery('''
-      SELECT sp.id as sp_id, sp.session_id, sp.player_id, sp.buy_in_cents_total, sp.cash_out_cents, sp.paid_upfront, sp.settlement_done,
-             p.name as player_name, p.email as player_email, p.active as player_active
-      FROM session_players sp
-      JOIN players p ON p.id = sp.player_id
-      WHERE sp.session_id = ?
-      ORDER BY p.name COLLATE NOCASE
-    ''', [sessionId]);
-    return rows;
+    final data = await _client
+        .from('session_players')
+        .select('id, session_id, player_id, buy_in_cents_total, cash_out_cents, paid_upfront, settlement_done, players(name, email, active)')
+        .eq('session_id', sessionId);
+    
+    // Transform the nested player data to flat structure
+    return (data as List).map((row) {
+      final player = row['players'] as Map<String, dynamic>?;
+      return {
+        'sp_id': row['id'],
+        'session_id': row['session_id'],
+        'player_id': row['player_id'],
+        'buy_in_cents_total': row['buy_in_cents_total'],
+        'cash_out_cents': row['cash_out_cents'],
+        'paid_upfront': row['paid_upfront'],
+        'settlement_done': row['settlement_done'],
+        'player_name': player?['name'],
+        'player_email': player?['email'],
+        'player_active': player?['active'],
+      };
+    }).toList();
   }
 }
- 

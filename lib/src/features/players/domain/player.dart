@@ -43,17 +43,17 @@ class Player {
         'email': email,
         'phone': phone,
         'notes': notes,
-        'created_at': createdAt.millisecondsSinceEpoch,
-        'active': active ? 1 : 0,
+        'created_at': createdAt.toIso8601String(),
+        'active': active,
       };
 
   factory Player.fromMap(Map<String, Object?> map) => Player(
-        id: map['id'] as int?,
+        id: map['id'] is int ? map['id'] as int : int.tryParse(map['id'].toString()),
         name: map['name'] as String,
         email: map['email'] as String?,
         phone: map['phone'] as String?,
         notes: map['notes'] as String?,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
-        active: ((map['active'] as int?) ?? 1) == 1,
+        createdAt: DateTime.parse(map['created_at'] as String),
+        active: map['active'] as bool? ?? true,
       );
 }

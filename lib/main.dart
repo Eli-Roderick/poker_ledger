@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'src/routing/app_shell.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'src/auth/presentation/auth_gate.dart';
 import 'src/theme/app_theme.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  await Supabase.initialize(
+    url: 'https://rgalzgiizhtwzwkfasoc.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJnYWx6Z2lpemh0d3p3a2Zhc29jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcxNTExMzEsImV4cCI6MjA4MjcyNzEzMX0.mhwELAeFPVT7oOdUU7KipFSxJFrTNocb9-98PWjxHsc',
+  );
+  
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -15,7 +23,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Poker Ledger',
       theme: AppTheme.theme(),
-      home: const AppShell(),
+      home: const AuthGate(),
       debugShowCheckedModeBanner: false,
     );
   }
