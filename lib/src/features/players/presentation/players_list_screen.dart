@@ -261,13 +261,6 @@ class PlayerTile extends ConsumerWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: player.isLinked ? Colors.green.shade100 : Colors.grey.shade200,
-          child: Icon(
-            player.isLinked ? Icons.link : Icons.person_outline,
-            color: player.isLinked ? Colors.green : Colors.grey,
-          ),
-        ),
         title: Row(
           children: [
             Expanded(child: Text(player.name)),
