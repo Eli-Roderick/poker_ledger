@@ -62,9 +62,9 @@ class AnalyticsState {
 final analyticsRepoProvider = Provider<SessionRepository>((ref) => SessionRepository());
 
 class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
-  AnalyticsFilters _filters = AnalyticsFilters(
-    start: DateTime.now().subtract(const Duration(days: 30)),
-    end: DateTime.now(),
+  AnalyticsFilters _filters = const AnalyticsFilters(
+    start: null,
+    end: null,
     includeInProgress: false,
   );
 
