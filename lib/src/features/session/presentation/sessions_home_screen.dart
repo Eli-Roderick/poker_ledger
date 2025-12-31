@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../analytics/data/analytics_providers.dart';
+import '../../groups/data/group_providers.dart';
+import '../../groups/domain/group_models.dart';
 
 import '../data/sessions_list_providers.dart';
 import '../data/session_providers.dart';
@@ -43,9 +45,50 @@ class SessionsHomeScreen extends ConsumerWidget {
     }
 
     final hasActiveFilter = filter.range != null || filter.status != SessionsStatusFilter.all;
+    final sourceFilter = ref.watch(sessionsSourceFilterProvider);
+    final groupsAsync = ref.watch(myGroupsProvider);
+    
+    String sourceLabel = switch (sourceFilter.source) {
+      SessionSourceFilter.mySessions => 'My Sessions',
+      SessionSourceFilter.all => 'All Visible',
+      SessionSourceFilter.group => sourceFilter.groupName ?? 'Group',
+    };
+    
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sessions'),
+        title: PopupMenuButton<dynamic>(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(sourceLabel),
+              const Icon(Icons.arrow_drop_down),
+            ],
+          ),
+          onSelected: (value) {
+            if (value == 'my') {
+              ref.read(sessionsSourceFilterProvider.notifier).state = const SessionsFilterState(source: SessionSourceFilter.mySessions);
+            } else if (value == 'all') {
+              ref.read(sessionsSourceFilterProvider.notifier).state = const SessionsFilterState(source: SessionSourceFilter.all);
+            } else if (value is Group) {
+              ref.read(sessionsSourceFilterProvider.notifier).state = SessionsFilterState(
+                source: SessionSourceFilter.group,
+                groupId: value.id,
+                groupName: value.name,
+              );
+            }
+            ref.invalidate(sessionsListProvider);
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'my', child: Text('My Sessions')),
+            const PopupMenuItem(value: 'all', child: Text('All Visible')),
+            const PopupMenuDivider(),
+            ...groupsAsync.when(
+              loading: () => [const PopupMenuItem(enabled: false, child: Text('Loading...'))],
+              error: (_, __) => <PopupMenuEntry<dynamic>>[],
+              data: (groups) => groups.map((g) => PopupMenuItem<Group>(value: g, child: Text(g.name))).toList(),
+            ),
+          ],
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -57,7 +100,7 @@ class SessionsHomeScreen extends ConsumerWidget {
               ),
               icon: Icon(hasActiveFilter ? Icons.filter_alt : Icons.filter_list),
               label: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 180),
+                constraints: const BoxConstraints(maxWidth: 120),
                 child: Text(
                   _filterSummary(filter),
                   overflow: TextOverflow.ellipsis,
