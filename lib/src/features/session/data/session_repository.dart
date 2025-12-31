@@ -283,7 +283,8 @@ class SessionRepository {
   }
 
   Future<List<Player>> getAllPlayers({bool activeOnly = false}) async {
-    var query = _client.from('players').select();
+    // Only show players owned by the current user
+    var query = _client.from('players').select().eq('user_id', _client.auth.currentUser!.id);
     if (activeOnly) {
       query = query.eq('active', true);
     }

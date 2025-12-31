@@ -5,7 +5,8 @@ class PlayersRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
   Future<List<Player>> getAll({bool includeDeactivated = false, bool deactivatedOnly = false}) async {
-    var query = _client.from('players').select();
+    // Only show players owned by the current user (not linked players from other users)
+    var query = _client.from('players').select().eq('user_id', _client.auth.currentUser!.id);
     
     if (deactivatedOnly) {
       query = query.eq('active', false);
