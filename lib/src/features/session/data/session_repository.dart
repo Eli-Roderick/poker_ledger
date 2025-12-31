@@ -230,19 +230,28 @@ class SessionRepository {
     // Get sessions (excluding ones owned by this user)
     final sessions = await _client
         .from('sessions')
-        .select('*, profiles(display_name)')
+        .select('*')
         .inFilter('id', sessionIds)
         .neq('user_id', userId)
         .order('started_at', ascending: false);
     
-    return (sessions as List).map((s) {
-      final profile = s['profiles'] as Map<String, dynamic>?;
-      return SessionWithOwner(
+    // Fetch owner names separately
+    final result = <SessionWithOwner>[];
+    for (final s in sessions) {
+      final ownerId = s['user_id'] as String;
+      final profile = await _client
+          .from('profiles')
+          .select('display_name')
+          .eq('id', ownerId)
+          .maybeSingle();
+      
+      result.add(SessionWithOwner(
         session: Session.fromMap(s),
         ownerName: profile?['display_name'] as String? ?? 'Unknown',
         isOwner: false,
-      );
-    }).toList();
+      ));
+    }
+    return result;
   }
 
   Future<List<Map<String, Object?>>> listQuickAddSumsByPlayer() async {
