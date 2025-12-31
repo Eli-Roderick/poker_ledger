@@ -330,7 +330,7 @@ class PlayerTile extends ConsumerWidget {
             if (player.isLinked)
               IconButton(
                 tooltip: 'Unlink user',
-                icon: const Icon(Icons.link_off),
+                icon: Icon(Icons.link_off, color: Colors.green.shade300),
                 onPressed: () async {
                   if (player.id == null) return;
                   final ok = await showDialog<bool>(
