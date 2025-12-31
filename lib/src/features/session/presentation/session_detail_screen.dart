@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../analytics/data/analytics_providers.dart';
+import '../../groups/data/group_providers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -104,6 +105,11 @@ class SessionDetailScreen extends ConsumerWidget {
                 }
               }
             },
+          ),
+          IconButton(
+            tooltip: 'Share to groups',
+            icon: const Icon(Icons.share),
+            onPressed: () => _showShareToGroupsDialog(context, ref, sessionId),
           ),
           IconButton(
             tooltip: 'Delete session',
@@ -503,4 +509,99 @@ class _MoneyInputDialogState extends State<_MoneyInputDialog> {
       ],
     );
   }
+}
+
+Future<void> _showShareToGroupsDialog(BuildContext context, WidgetRef ref, int sessionId) async {
+  final groups = await ref.read(myGroupsProvider.future);
+  final currentGroupIds = await ref.read(groupRepositoryProvider).getSessionGroupIds(sessionId);
+  
+  if (groups.isEmpty) {
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('No Groups'),
+          content: const Text('Create a group first to share sessions with friends.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+    return;
+  }
+
+  final selectedGroupIds = Set<int>.from(currentGroupIds);
+
+  if (!context.mounted) return;
+  
+  await showDialog(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Share to Groups'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Select which groups can see this session:',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              ...groups.map((group) => CheckboxListTile(
+                title: Text(group.name),
+                subtitle: Text('${group.memberCount} member${group.memberCount == 1 ? '' : 's'}'),
+                value: selectedGroupIds.contains(group.id),
+                onChanged: (checked) {
+                  setState(() {
+                    if (checked == true) {
+                      selectedGroupIds.add(group.id);
+                    } else {
+                      selectedGroupIds.remove(group.id);
+                    }
+                  });
+                },
+              )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ref.read(groupRepositoryProvider).updateSessionGroups(
+                sessionId,
+                selectedGroupIds.toList(),
+              );
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext);
+              }
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      selectedGroupIds.isEmpty
+                          ? 'Session is now private'
+                          : 'Session shared to ${selectedGroupIds.length} group${selectedGroupIds.length == 1 ? '' : 's'}',
+                    ),
+                  ),
+                );
+              }
+              ref.read(sessionsListProvider.notifier).refresh();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
