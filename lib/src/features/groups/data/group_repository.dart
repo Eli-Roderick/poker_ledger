@@ -93,12 +93,18 @@ class GroupRepository {
     // Get group owner info
     final group = await _client
         .from('groups')
-        .select('owner_id, profiles(display_name, email)')
+        .select('owner_id')
         .eq('id', groupId)
         .single();
 
     final ownerId = group['owner_id'] as String;
-    final ownerProfile = group['profiles'] as Map<String, dynamic>?;
+
+    // Get owner profile separately
+    final ownerProfile = await _client
+        .from('profiles')
+        .select('display_name, email')
+        .eq('id', ownerId)
+        .maybeSingle();
 
     final List<GroupMember> members = [];
 
@@ -116,15 +122,22 @@ class GroupRepository {
     // Get other members
     final membersData = await _client
         .from('group_members')
-        .select('*, profiles(display_name, email)')
+        .select('*')
         .eq('group_id', groupId);
 
     for (final m in membersData) {
-      final profile = m['profiles'] as Map<String, dynamic>?;
+      final oderId = m['user_id'] as String;
+      // Get profile for each member
+      final profile = await _client
+          .from('profiles')
+          .select('display_name, email')
+          .eq('id', oderId)
+          .maybeSingle();
+      
       members.add(GroupMember(
         id: m['id'] as int,
         groupId: m['group_id'] as int,
-        oderId: m['user_id'] as String,
+        oderId: oderId,
         joinedAt: DateTime.parse(m['joined_at'] as String),
         displayName: profile?['display_name'] as String?,
         email: profile?['email'] as String?,
