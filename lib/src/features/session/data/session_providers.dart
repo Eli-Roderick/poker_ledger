@@ -33,8 +33,8 @@ class OpenSessionNotifier extends AsyncNotifier<OpenSessionState> {
               id: m['sp_id'] as int,
               sessionId: m['session_id'] as int,
               playerId: m['player_id'] as int,
-              buyInCentsTotal: m['buy_in_cents_total'] as int,
-              paidUpfront: (m['paid_upfront'] as int) == 1,
+              buyInCentsTotal: m['buy_in_cents_total'] as int? ?? 0,
+              paidUpfront: m['paid_upfront'] as bool? ?? true,
             ))
         .toList();
   }

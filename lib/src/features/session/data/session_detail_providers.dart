@@ -20,10 +20,10 @@ final sessionDetailProvider = FutureProvider.family<SessionDetailState, int>((re
             id: m['sp_id'] as int,
             sessionId: m['session_id'] as int,
             playerId: m['player_id'] as int,
-            buyInCentsTotal: m['buy_in_cents_total'] as int,
+            buyInCentsTotal: m['buy_in_cents_total'] as int? ?? 0,
             cashOutCents: m['cash_out_cents'] as int?,
-            paidUpfront: (m['paid_upfront'] as int) == 1,
-            settlementDone: ((m['settlement_done'] as int?) ?? 0) == 1,
+            paidUpfront: m['paid_upfront'] as bool? ?? true,
+            settlementDone: m['settlement_done'] as bool? ?? false,
           ))
       .toList();
   final allPlayers = await repo.getAllPlayers();
