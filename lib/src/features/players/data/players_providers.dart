@@ -30,10 +30,25 @@ class PlayersListNotifier extends AsyncNotifier<List<Player>> {
     String? email,
     String? phone,
     String? notes,
+    String? linkedUserId,
   }) async {
-    final added = await _repo.add(name: name, email: email, phone: phone, notes: notes);
+    final added = await _repo.add(name: name, email: email, phone: phone, notes: notes, linkedUserId: linkedUserId);
     final current = state.value ?? const <Player>[];
     state = AsyncData(<Player>[added, ...current]);
+  }
+
+  Future<List<UserSearchResult>> searchUsers(String query) async {
+    return _repo.searchUsers(query);
+  }
+
+  Future<void> linkPlayerToUser({required int playerId, required String userId}) async {
+    await _repo.linkToUser(playerId: playerId, userId: userId);
+    await refresh();
+  }
+
+  Future<void> unlinkPlayer({required int playerId}) async {
+    await _repo.unlinkUser(playerId: playerId);
+    await refresh();
   }
 
   Future<void> deletePlayer(int id) async {
