@@ -6,7 +6,9 @@ class AnalyticsFilters {
   final DateTime? start;
   final DateTime? end;
   final bool includeInProgress;
-  const AnalyticsFilters({this.start, this.end, this.includeInProgress = false});
+  final int? groupId;
+  final String? groupName;
+  const AnalyticsFilters({this.start, this.end, this.includeInProgress = false, this.groupId, this.groupName});
 
   bool _inRange(DateTime d) {
     final afterStart = start == null || !d.isBefore(start!);
@@ -14,10 +16,20 @@ class AnalyticsFilters {
     return afterStart && beforeEnd;
   }
 
-  AnalyticsFilters copyWith({DateTime? start, DateTime? end, bool? includeInProgress}) => AnalyticsFilters(
+  AnalyticsFilters copyWith({DateTime? start, DateTime? end, bool? includeInProgress, int? groupId, String? groupName}) => AnalyticsFilters(
         start: start ?? this.start,
         end: end ?? this.end,
         includeInProgress: includeInProgress ?? this.includeInProgress,
+        groupId: groupId ?? this.groupId,
+        groupName: groupName ?? this.groupName,
+      );
+  
+  AnalyticsFilters clearGroup() => AnalyticsFilters(
+        start: start,
+        end: end,
+        includeInProgress: includeInProgress,
+        groupId: null,
+        groupName: null,
       );
 }
 
@@ -88,7 +100,16 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
 
   Future<AnalyticsState> _load() async {
     final repo = ref.read(analyticsRepoProvider);
-    final sessions = await repo.listSessions();
+    
+    // Get sessions based on group filter
+    List<Session> sessions;
+    if (_filters.groupId != null) {
+      final sessionsWithOwner = await repo.listSessionsInGroup(_filters.groupId!);
+      sessions = sessionsWithOwner.map((sw) => sw.session).toList();
+    } else {
+      sessions = await repo.listSessions();
+    }
+    
     final filtered = sessions.where((s) {
       final inRange = _filters._inRange(s.startedAt);
       final include = _filters.includeInProgress ? true : s.finalized;

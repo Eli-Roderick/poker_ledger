@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import '../../session/domain/session_models.dart';
+import '../../groups/data/group_providers.dart';
+import '../../groups/domain/group_models.dart';
 
 import '../data/analytics_providers.dart';
 import '../../players/presentation/player_detail_screen.dart';
@@ -20,9 +22,44 @@ class AnalyticsScreen extends ConsumerWidget {
     final async = ref.watch(analyticsProvider);
     final currency = NumberFormat.simpleCurrency();
 
+    final groupsAsync = ref.watch(myGroupsProvider);
+    final currentFilters = async.valueOrNull?.filters;
+    final groupLabel = currentFilters?.groupName ?? 'All Sessions';
+    
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Analytics'),
+        title: PopupMenuButton<dynamic>(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(groupLabel),
+              const Icon(Icons.arrow_drop_down),
+            ],
+          ),
+          onSelected: (value) {
+            if (value == 'all') {
+              ref.read(analyticsProvider.notifier).setFilters(
+                (currentFilters ?? const AnalyticsFilters()).clearGroup(),
+              );
+            } else if (value is Group) {
+              ref.read(analyticsProvider.notifier).setFilters(
+                (currentFilters ?? const AnalyticsFilters()).copyWith(
+                  groupId: value.id,
+                  groupName: value.name,
+                ),
+              );
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(value: 'all', child: Text('All Sessions')),
+            const PopupMenuDivider(),
+            ...groupsAsync.when(
+              loading: () => [const PopupMenuItem(enabled: false, child: Text('Loading...'))],
+              error: (_, __) => <PopupMenuEntry<dynamic>>[],
+              data: (groups) => groups.map((g) => PopupMenuItem<Group>(value: g, child: Text(g.name))).toList(),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Filters',
