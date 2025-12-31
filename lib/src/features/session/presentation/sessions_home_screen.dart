@@ -76,7 +76,8 @@ class SessionsHomeScreen extends ConsumerWidget {
         error: (e, st) => Center(child: Text('Error: $e')),
         data: (sessions) {
           // Apply filters locally
-          final filtered = sessions.where((s) {
+          final filtered = sessions.where((sw) {
+            final s = sw.session;
             final inRange = () {
               final r = filter.range;
               if (r == null) return true;
@@ -105,61 +106,84 @@ class SessionsHomeScreen extends ConsumerWidget {
               itemCount: filtered.length,
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (_, i) {
-                final s = filtered[i];
+                final sw = filtered[i];
+                final s = sw.session;
                 final started = DateFormat.yMMMd().add_jm().format(s.startedAt);
                 final status = s.finalized ? 'Finalized' : 'In progress';
+                final isOwner = sw.isOwner;
                 return ListTile(
-                  title: Text((s.name == null || s.name!.trim().isEmpty) ? 'Session #${s.id ?? '-'}' : s.name!),
-                  subtitle: Text('$started • $status'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () async {
-                      final ok = await showDialog<bool>(
-                        context: context,
-                        builder: (_) => AlertDialog(
-                          title: const Text('Delete session?'),
-                          content: const Text('This action cannot be undone.'),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-                          ],
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text((s.name == null || s.name!.trim().isEmpty) ? 'Session #${s.id ?? '-'}' : s.name!),
+                      ),
+                      if (!isOwner)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'From ${sw.ownerName}',
+                            style: Theme.of(context).textTheme.labelSmall,
+                          ),
                         ),
-                      );
-                      if (ok == true) {
-                        await ref.read(sessionRepositoryProvider).deleteSession(s.id!);
-                        // Immediately recompute analytics so Top Players updates
-                        await ref.read(analyticsProvider.notifier).refresh();
-                        await ref.read(sessionsListProvider.notifier).refresh();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session deleted')));
-                        }
-                      }
-                    },
+                    ],
                   ),
+                  subtitle: Text('$started • $status'),
+                  trailing: isOwner
+                      ? IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (_) => AlertDialog(
+                                title: const Text('Delete session?'),
+                                content: const Text('This action cannot be undone.'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                  FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              await ref.read(sessionRepositoryProvider).deleteSession(s.id!);
+                              await ref.read(analyticsProvider.notifier).refresh();
+                              await ref.read(sessionsListProvider.notifier).refresh();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session deleted')));
+                              }
+                            }
+                          },
+                        )
+                      : null,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => SessionDetailScreen(sessionId: s.id!)),
                   ),
-                  onLongPress: () async {
-                    final controller = TextEditingController(text: s.name ?? '');
-                    final newName = await showDialog<String?>(
-                      context: context,
-                      builder: (_) => AlertDialog(
-                        title: const Text('Rename session'),
-                        content: TextField(
-                          controller: controller,
-                          decoration: const InputDecoration(labelText: 'Name (optional)'),
-                        ),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Save')),
-                        ],
-                      ),
-                    );
-                    if (newName != null) {
-                      await ref.read(sessionRepositoryProvider).renameSession(sessionId: s.id!, name: newName.isEmpty ? null : newName);
-                      await ref.read(sessionsListProvider.notifier).refresh();
-                    }
-                  },
+                  onLongPress: isOwner
+                      ? () async {
+                          final controller = TextEditingController(text: s.name ?? '');
+                          final newName = await showDialog<String?>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('Rename session'),
+                              content: TextField(
+                                controller: controller,
+                                decoration: const InputDecoration(labelText: 'Name (optional)'),
+                              ),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                                FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Save')),
+                              ],
+                            ),
+                          );
+                          if (newName != null) {
+                            await ref.read(sessionRepositoryProvider).renameSession(sessionId: s.id!, name: newName.isEmpty ? null : newName);
+                            await ref.read(sessionsListProvider.notifier).refresh();
+                          }
+                        }
+                      : null,
                 );
               },
             ),

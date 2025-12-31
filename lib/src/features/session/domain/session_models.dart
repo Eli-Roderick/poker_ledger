@@ -104,3 +104,15 @@ class RebuyEntry {
         createdAt: DateTime.parse(map['created_at'] as String),
       );
 }
+
+class SessionWithOwner {
+  final Session session;
+  final String ownerName;
+  final bool isOwner;
+
+  const SessionWithOwner({
+    required this.session,
+    required this.ownerName,
+    required this.isOwner,
+  });
+}

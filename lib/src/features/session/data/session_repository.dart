@@ -80,6 +80,123 @@ class SessionRepository {
     return (data as List).map((e) => Session.fromMap(e)).toList();
   }
 
+  /// List sessions the current user owns
+  Future<List<Session>> listMySessions() async {
+    final data = await _client
+        .from('sessions')
+        .select()
+        .eq('user_id', _client.auth.currentUser!.id)
+        .order('started_at', ascending: false);
+    return (data as List).map((e) => Session.fromMap(e)).toList();
+  }
+
+  /// List all sessions visible to user (own + shared via groups)
+  Future<List<SessionWithOwner>> listAllVisibleSessions() async {
+    final userId = _client.auth.currentUser!.id;
+    
+    // Get user's own sessions
+    final ownSessions = await _client
+        .from('sessions')
+        .select('*, profiles(display_name)')
+        .eq('user_id', userId)
+        .order('started_at', ascending: false);
+    
+    // Get sessions shared to groups user is in
+    // First get group IDs user belongs to
+    final ownedGroups = await _client
+        .from('groups')
+        .select('id')
+        .eq('owner_id', userId);
+    
+    final memberGroups = await _client
+        .from('group_members')
+        .select('group_id')
+        .eq('user_id', userId);
+    
+    final groupIds = <int>{
+      ...ownedGroups.map((g) => g['id'] as int),
+      ...memberGroups.map((g) => g['group_id'] as int),
+    };
+    
+    final List<SessionWithOwner> result = [];
+    final Set<int> addedSessionIds = {};
+    
+    // Add own sessions
+    for (final s in ownSessions) {
+      final profile = s['profiles'] as Map<String, dynamic>?;
+      result.add(SessionWithOwner(
+        session: Session.fromMap(s),
+        ownerName: profile?['display_name'] as String? ?? 'You',
+        isOwner: true,
+      ));
+      addedSessionIds.add(s['id'] as int);
+    }
+    
+    // Get shared sessions from groups
+    if (groupIds.isNotEmpty) {
+      final sharedSessionIds = await _client
+          .from('session_groups')
+          .select('session_id')
+          .inFilter('group_id', groupIds.toList());
+      
+      final sessionIds = sharedSessionIds
+          .map((s) => s['session_id'] as int)
+          .where((id) => !addedSessionIds.contains(id))
+          .toSet()
+          .toList();
+      
+      if (sessionIds.isNotEmpty) {
+        final sharedSessions = await _client
+            .from('sessions')
+            .select('*, profiles(display_name)')
+            .inFilter('id', sessionIds)
+            .order('started_at', ascending: false);
+        
+        for (final s in sharedSessions) {
+          final profile = s['profiles'] as Map<String, dynamic>?;
+          result.add(SessionWithOwner(
+            session: Session.fromMap(s),
+            ownerName: profile?['display_name'] as String? ?? 'Unknown',
+            isOwner: false,
+          ));
+        }
+      }
+    }
+    
+    // Sort by started_at descending
+    result.sort((a, b) => b.session.startedAt.compareTo(a.session.startedAt));
+    return result;
+  }
+
+  /// List sessions in a specific group
+  Future<List<SessionWithOwner>> listSessionsInGroup(int groupId) async {
+    final userId = _client.auth.currentUser!.id;
+    
+    final sessionGroups = await _client
+        .from('session_groups')
+        .select('session_id')
+        .eq('group_id', groupId);
+    
+    final sessionIds = sessionGroups.map((s) => s['session_id'] as int).toList();
+    
+    if (sessionIds.isEmpty) return [];
+    
+    final sessions = await _client
+        .from('sessions')
+        .select('*, profiles(display_name)')
+        .inFilter('id', sessionIds)
+        .order('started_at', ascending: false);
+    
+    return (sessions as List).map((s) {
+      final profile = s['profiles'] as Map<String, dynamic>?;
+      return SessionWithOwner(
+        session: Session.fromMap(s),
+        ownerName: profile?['display_name'] as String? ?? 'Unknown',
+        isOwner: s['user_id'] == userId,
+      );
+    }).toList();
+  }
+
   Future<Session?> getSessionById(int id) async {
     final data = await _client.from('sessions').select().eq('id', id).maybeSingle();
     if (data == null) return null;
