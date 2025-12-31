@@ -17,6 +17,8 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: const Color(0xFF111315),
+      canvasColor: const Color(0xFF111315),
+      cardColor: const Color(0xFF1A1C1E),
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFF1A1C1E),
         foregroundColor: Colors.white,
