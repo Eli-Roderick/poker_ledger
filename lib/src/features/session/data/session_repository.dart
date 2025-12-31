@@ -203,6 +203,48 @@ class SessionRepository {
     return Session.fromMap(data);
   }
 
+  /// List sessions where the current user is a linked player (not owner)
+  Future<List<SessionWithOwner>> listSessionsAsLinkedPlayer() async {
+    final userId = _client.auth.currentUser!.id;
+    
+    // Get player IDs linked to this user
+    final linkedPlayers = await _client
+        .from('players')
+        .select('id')
+        .eq('linked_user_id', userId);
+    
+    final playerIds = linkedPlayers.map((p) => p['id'] as int).toList();
+    
+    if (playerIds.isEmpty) return [];
+    
+    // Get session IDs where these players participated
+    final sessionPlayers = await _client
+        .from('session_players')
+        .select('session_id')
+        .inFilter('player_id', playerIds);
+    
+    final sessionIds = sessionPlayers.map((sp) => sp['session_id'] as int).toSet().toList();
+    
+    if (sessionIds.isEmpty) return [];
+    
+    // Get sessions (excluding ones owned by this user)
+    final sessions = await _client
+        .from('sessions')
+        .select('*, profiles(display_name)')
+        .inFilter('id', sessionIds)
+        .neq('user_id', userId)
+        .order('started_at', ascending: false);
+    
+    return (sessions as List).map((s) {
+      final profile = s['profiles'] as Map<String, dynamic>?;
+      return SessionWithOwner(
+        session: Session.fromMap(s),
+        ownerName: profile?['display_name'] as String? ?? 'Unknown',
+        isOwner: false,
+      );
+    }).toList();
+  }
+
   Future<List<Map<String, Object?>>> listQuickAddSumsByPlayer() async {
     final data = await _client.from('quick_add_entries').select('player_id, amount_cents');
     

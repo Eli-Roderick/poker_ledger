@@ -321,6 +321,37 @@ class PlayerTile extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (player.isGuest)
+              IconButton(
+                tooltip: 'Link to user',
+                icon: const Icon(Icons.link),
+                onPressed: () => _showLinkUserDialog(context, ref, player),
+              ),
+            if (player.isLinked)
+              IconButton(
+                tooltip: 'Unlink user',
+                icon: const Icon(Icons.link_off),
+                onPressed: () async {
+                  if (player.id == null) return;
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Unlink user?'),
+                      content: Text('This will convert ${player.name} back to a guest player.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Unlink')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    await ref.read(playersListProvider.notifier).unlinkPlayer(playerId: player.id!);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${player.name} unlinked')));
+                    }
+                  }
+                },
+              ),
             if (player.active)
               IconButton(
                 tooltip: 'Deactivate',
@@ -340,7 +371,6 @@ class PlayerTile extends ConsumerWidget {
                   );
                   if (ok == true) {
                     await ref.read(playersListProvider.notifier).setActive(id: player.id!, active: false);
-                    // Refresh analytics so deactivated player's nets disappear immediately
                     await ref.read(analyticsProvider.notifier).refresh();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${player.name} deactivated')));
@@ -355,7 +385,6 @@ class PlayerTile extends ConsumerWidget {
                 onPressed: () async {
                   if (player.id == null) return;
                   await ref.read(playersListProvider.notifier).setActive(id: player.id!, active: true);
-                  // Refresh analytics so reactivated player's nets reappear if present
                   await ref.read(analyticsProvider.notifier).refresh();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${player.name} reactivated')));
@@ -367,6 +396,148 @@ class PlayerTile extends ConsumerWidget {
       ),
     );
   }
+}
+
+Future<void> _showLinkUserDialog(BuildContext context, WidgetRef ref, Player player) async {
+  final searchCtrl = TextEditingController();
+  List<UserSearchResult> searchResults = [];
+  bool isSearching = false;
+  UserSearchResult? selectedUser;
+
+  await showDialog(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) {
+        Future<void> searchUsers(String query) async {
+          if (query.trim().isEmpty) {
+            setState(() {
+              searchResults = [];
+              isSearching = false;
+            });
+            return;
+          }
+          setState(() => isSearching = true);
+          try {
+            final results = await ref.read(playersListProvider.notifier).searchUsers(query);
+            setState(() {
+              searchResults = results;
+              isSearching = false;
+            });
+          } catch (e) {
+            setState(() => isSearching = false);
+          }
+        }
+
+        return AlertDialog(
+          title: Text('Link ${player.name} to User'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: searchCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Search by email or name',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: isSearching
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : null,
+                  ),
+                  onChanged: (q) {
+                    Future.delayed(const Duration(milliseconds: 400), () {
+                      if (searchCtrl.text == q) searchUsers(q);
+                    });
+                  },
+                ),
+                if (searchResults.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 150),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: searchResults.length,
+                      itemBuilder: (context, index) {
+                        final user = searchResults[index];
+                        final isSelected = selectedUser?.id == user.id;
+                        return ListTile(
+                          dense: true,
+                          selected: isSelected,
+                          leading: const Icon(Icons.person),
+                          title: Text(user.displayName ?? 'No name'),
+                          subtitle: Text(user.email ?? ''),
+                          onTap: () => setState(() => selectedUser = user),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+                if (selectedUser != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Colors.green),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Selected: ${selectedUser!.displayName ?? selectedUser!.email}',
+                            style: const TextStyle(color: Colors.green),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: selectedUser == null
+                  ? null
+                  : () async {
+                      await ref.read(playersListProvider.notifier).linkPlayerToUser(
+                            playerId: player.id!,
+                            userId: selectedUser!.id,
+                          );
+                      if (dialogContext.mounted) {
+                        Navigator.pop(dialogContext);
+                      }
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${player.name} linked to ${selectedUser!.displayName ?? selectedUser!.email}')),
+                        );
+                      }
+                    },
+              child: const Text('Link'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
 }
 
 class ListEmptyState extends StatelessWidget {
