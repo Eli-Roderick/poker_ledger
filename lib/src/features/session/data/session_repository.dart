@@ -90,6 +90,16 @@ class SessionRepository {
     return (data as List).map((e) => Session.fromMap(e)).toList();
   }
 
+  /// Helper to fetch owner display name
+  Future<String> _getOwnerName(String oderId) async {
+    final profile = await _client
+        .from('profiles')
+        .select('display_name')
+        .eq('id', oderId)
+        .maybeSingle();
+    return profile?['display_name'] as String? ?? 'Unknown';
+  }
+
   /// List all sessions visible to user (own + shared via groups)
   Future<List<SessionWithOwner>> listAllVisibleSessions() async {
     final userId = _client.auth.currentUser!.id;
@@ -97,7 +107,7 @@ class SessionRepository {
     // Get user's own sessions
     final ownSessions = await _client
         .from('sessions')
-        .select('*, profiles(display_name)')
+        .select('*')
         .eq('user_id', userId)
         .order('started_at', ascending: false);
     
@@ -123,10 +133,9 @@ class SessionRepository {
     
     // Add own sessions
     for (final s in ownSessions) {
-      final profile = s['profiles'] as Map<String, dynamic>?;
       result.add(SessionWithOwner(
         session: Session.fromMap(s),
-        ownerName: profile?['display_name'] as String? ?? 'You',
+        ownerName: 'You',
         isOwner: true,
       ));
       addedSessionIds.add(s['id'] as int);
@@ -148,15 +157,16 @@ class SessionRepository {
       if (sessionIds.isNotEmpty) {
         final sharedSessions = await _client
             .from('sessions')
-            .select('*, profiles(display_name)')
+            .select('*')
             .inFilter('id', sessionIds)
             .order('started_at', ascending: false);
         
         for (final s in sharedSessions) {
-          final profile = s['profiles'] as Map<String, dynamic>?;
+          final ownerId = s['user_id'] as String;
+          final ownerName = await _getOwnerName(ownerId);
           result.add(SessionWithOwner(
             session: Session.fromMap(s),
-            ownerName: profile?['display_name'] as String? ?? 'Unknown',
+            ownerName: ownerName,
             isOwner: false,
           ));
         }
@@ -183,18 +193,22 @@ class SessionRepository {
     
     final sessions = await _client
         .from('sessions')
-        .select('*, profiles(display_name)')
+        .select('*')
         .inFilter('id', sessionIds)
         .order('started_at', ascending: false);
     
-    return (sessions as List).map((s) {
-      final profile = s['profiles'] as Map<String, dynamic>?;
-      return SessionWithOwner(
+    final result = <SessionWithOwner>[];
+    for (final s in sessions) {
+      final ownerId = s['user_id'] as String;
+      final isOwner = ownerId == userId;
+      final ownerName = isOwner ? 'You' : await _getOwnerName(ownerId);
+      result.add(SessionWithOwner(
         session: Session.fromMap(s),
-        ownerName: profile?['display_name'] as String? ?? 'Unknown',
-        isOwner: s['user_id'] == userId,
-      );
-    }).toList();
+        ownerName: ownerName,
+        isOwner: isOwner,
+      ));
+    }
+    return result;
   }
 
   Future<Session?> getSessionById(int id) async {

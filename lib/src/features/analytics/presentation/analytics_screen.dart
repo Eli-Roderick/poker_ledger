@@ -68,6 +68,8 @@ class AnalyticsScreen extends ConsumerWidget {
               showModalBottomSheet(
                 context: context,
                 showDragHandle: true,
+                isScrollControlled: true,
+                useSafeArea: true,
                 builder: (_) {
                   return Consumer(
                     builder: (context, ref, __) {
@@ -79,8 +81,7 @@ class AnalyticsScreen extends ConsumerWidget {
                           child: Center(child: CircularProgressIndicator()),
                         );
                       }
-                      return Padding(
-                        padding: const EdgeInsets.all(12.0),
+                      return SafeArea(
                         child: _AnalyticsFiltersBar(
                           filters: state.filters,
                           onChanged: (f) => ref.read(analyticsProvider.notifier).setFilters(f),
@@ -240,41 +241,90 @@ class _AnalyticsFiltersBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(12.0),
-      child: Wrap(
-        runSpacing: 8,
-        spacing: 12,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          _DateChip(
-            label: 'Start',
-            date: filters.start,
-            onTap: () async {
-              final picked = await _pickDate(context, filters.start ?? DateTime.now());
-              if (picked != null) onChanged(filters.copyWith(start: picked));
-            },
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            'Filters',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
-          _DateChip(
-            label: 'End',
-            date: filters.end,
-            onTap: () async {
-              final picked = await _pickDate(context, filters.end ?? DateTime.now());
-              if (picked != null) onChanged(filters.copyWith(end: picked));
-            },
-          ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
+        ),
+        const Divider(height: 1),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('Date Range', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey)),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
             children: [
-              const Text('Include in-progress'),
-              Switch(
-                value: filters.includeInProgress,
-                onChanged: (v) => onChanged(filters.copyWith(includeInProgress: v)),
+              Expanded(
+                child: _DateButton(
+                  label: 'Start Date',
+                  date: filters.start,
+                  onTap: () async {
+                    final picked = await _pickDate(context, filters.start ?? DateTime.now());
+                    if (picked != null) onChanged(filters.copyWith(start: picked));
+                  },
+                  onClear: filters.start != null ? () => onChanged(AnalyticsFilters(
+                    start: null,
+                    end: filters.end,
+                    includeInProgress: filters.includeInProgress,
+                    groupId: filters.groupId,
+                    groupName: filters.groupName,
+                  )) : null,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _DateButton(
+                  label: 'End Date',
+                  date: filters.end,
+                  onTap: () async {
+                    final picked = await _pickDate(context, filters.end ?? DateTime.now());
+                    if (picked != null) onChanged(filters.copyWith(end: picked));
+                  },
+                  onClear: filters.end != null ? () => onChanged(AnalyticsFilters(
+                    start: filters.start,
+                    end: null,
+                    includeInProgress: filters.includeInProgress,
+                    groupId: filters.groupId,
+                    groupName: filters.groupName,
+                  )) : null,
+                ),
               ),
             ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 20),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('Options', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey)),
+        ),
+        SwitchListTile(
+          title: const Text('Include in-progress sessions'),
+          subtitle: const Text('Show sessions that haven\'t been finalized'),
+          value: filters.includeInProgress,
+          onChanged: (v) => onChanged(filters.copyWith(includeInProgress: v)),
+        ),
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: FilledButton.tonal(
+            onPressed: () {
+              onChanged(const AnalyticsFilters());
+              Navigator.pop(context);
+            },
+            child: const Text('Clear All Filters'),
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 
@@ -286,16 +336,44 @@ class _AnalyticsFiltersBar extends StatelessWidget {
   }
 }
 
-class _DateChip extends StatelessWidget {
+class _DateButton extends StatelessWidget {
   final String label;
   final DateTime? date;
   final VoidCallback onTap;
-  const _DateChip({required this.label, required this.date, required this.onTap});
+  final VoidCallback? onClear;
+  const _DateButton({required this.label, required this.date, required this.onTap, this.onClear});
 
   @override
   Widget build(BuildContext context) {
     final text = date == null ? 'Any' : DateFormat.yMMMd().format(date!);
-    return ActionChip(label: Text('$label: $text'), onPressed: onTap);
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey)),
+                const SizedBox(height: 2),
+                Text(text, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+          ),
+          if (onClear != null)
+            GestureDetector(
+              onTap: onClear,
+              child: const Icon(Icons.close, size: 18),
+            )
+          else
+            const Icon(Icons.calendar_today, size: 18),
+        ],
+      ),
+    );
   }
 }
 
