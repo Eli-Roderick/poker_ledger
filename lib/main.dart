@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'src/auth/presentation/auth_gate.dart';
@@ -6,6 +7,13 @@ import 'src/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Set system UI colors to match app theme
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    systemNavigationBarColor: Color(0xFF111315),
+    systemNavigationBarDividerColor: Color(0xFF111315),
+    statusBarColor: Colors.transparent,
+  ));
   
   await Supabase.initialize(
     url: 'https://rgalzgiizhtwzwkfasoc.supabase.co',
