@@ -26,6 +26,33 @@ final sessionDetailProvider = FutureProvider.family<SessionDetailState, int>((re
             settlementDone: m['settlement_done'] as bool? ?? false,
           ))
       .toList();
-  final allPlayers = await repo.getAllPlayers();
+  // Build player list from session data (works for shared sessions too)
+  // Also try to get user's own players for adding new participants
+  final playersFromSession = rows.map((m) => Player(
+    id: m['player_id'] as int,
+    name: m['player_name'] as String? ?? 'Unknown',
+    email: m['player_email'] as String?,
+    active: m['player_active'] as bool? ?? true,
+    createdAt: DateTime.now(), // Placeholder - not used for display
+  )).toList();
+  
+  // Try to get user's own players, but don't fail if empty
+  List<Player> ownPlayers = [];
+  try {
+    ownPlayers = await repo.getAllPlayers();
+  } catch (_) {
+    // Ignore - user may be viewing a shared session
+  }
+  
+  // Combine: session players + own players (deduplicated by id)
+  final playerIds = <int>{};
+  final allPlayers = <Player>[];
+  for (final p in [...playersFromSession, ...ownPlayers]) {
+    if (p.id != null && !playerIds.contains(p.id)) {
+      playerIds.add(p.id!);
+      allPlayers.add(p);
+    }
+  }
+  
   return SessionDetailState(session: session, participants: participants, allPlayers: allPlayers);
 });
