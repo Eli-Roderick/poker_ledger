@@ -57,8 +57,17 @@ class SessionKPI {
   final int players;
   final int buyInsCents;
   final int cashOutsCents;
+  final String? ownerName; // For shared sessions - shows who shared it
+  final bool isOwner;
   int get netCents => cashOutsCents - buyInsCents;
-  const SessionKPI({required this.session, required this.players, required this.buyInsCents, required this.cashOutsCents});
+  const SessionKPI({
+    required this.session,
+    required this.players,
+    required this.buyInsCents,
+    required this.cashOutsCents,
+    this.ownerName,
+    this.isOwner = true,
+  });
 }
 
 class AnalyticsState {
@@ -102,22 +111,26 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
     final repo = ref.read(analyticsRepoProvider);
     
     // Get sessions based on group filter
-    List<Session> sessions;
+    List<SessionWithOwner> sessionsWithOwner;
     if (_filters.groupId != null) {
-      final sessionsWithOwner = await repo.listSessionsInGroup(_filters.groupId!);
-      sessions = sessionsWithOwner.map((sw) => sw.session).toList();
+      sessionsWithOwner = await repo.listSessionsInGroup(_filters.groupId!);
     } else {
-      sessions = await repo.listMySessions();
+      final mySessions = await repo.listMySessions();
+      sessionsWithOwner = mySessions.map((s) => SessionWithOwner(
+        session: s,
+        ownerName: 'You',
+        isOwner: true,
+      )).toList();
     }
     
-    final filtered = sessions.where((s) {
-      final inRange = _filters._inRange(s.startedAt);
-      final include = _filters.includeInProgress ? true : s.finalized;
+    final filtered = sessionsWithOwner.where((sw) {
+      final inRange = _filters._inRange(sw.session.startedAt);
+      final include = _filters.includeInProgress ? true : sw.session.finalized;
       return inRange && include;
     }).toList();
 
     // Batch fetch all session players in one query for performance
-    final sessionIds = filtered.map((s) => s.id!).toList();
+    final sessionIds = filtered.map((sw) => sw.session.id!).toList();
     final allSessionPlayers = await repo.listSessionPlayersForMultipleSessions(sessionIds);
     
     // Group by session_id for easy lookup
@@ -130,7 +143,8 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
     // Build per-session aggregates (include deactivated players to preserve history)
     final sessionKpis = <SessionKPI>[];
     final playerMap = <int, PlayerAggregate>{};
-    for (final s in filtered) {
+    for (final sw in filtered) {
+      final s = sw.session;
       final rows = playersBySession[s.id!] ?? [];
       int buy = 0, cash = 0;
       for (final r in rows) {
@@ -164,7 +178,14 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
           );
         }
       }
-      sessionKpis.add(SessionKPI(session: s, players: rows.length, buyInsCents: buy, cashOutsCents: cash));
+      sessionKpis.add(SessionKPI(
+        session: s,
+        players: rows.length,
+        buyInsCents: buy,
+        cashOutsCents: cash,
+        ownerName: sw.ownerName,
+        isOwner: sw.isOwner,
+      ));
     }
 
     // Add quick-add totals to player nets (does not change sessions/max win/max loss)

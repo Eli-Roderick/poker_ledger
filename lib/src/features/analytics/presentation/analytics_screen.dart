@@ -181,10 +181,13 @@ class AnalyticsScreen extends ConsumerWidget {
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (_, i) {
                   final s = state.sessions[i];
-                  final subtitle = _formatSessionSubtitle(s.session);
+                  final sessionName = s.session.name?.isNotEmpty == true 
+                      ? s.session.name! 
+                      : 'Session #${s.session.id ?? '-'}';
+                  final subtitle = _formatSessionSubtitle(s.session, s.ownerName, s.isOwner);
                   return ListTile(
                     dense: true,
-                    title: Text('Session #${s.session.id ?? '-'}'),
+                    title: Text(sessionName),
                     subtitle: Text(subtitle),
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -206,9 +209,12 @@ class AnalyticsScreen extends ConsumerWidget {
     );
   }
 
-  String _formatSessionSubtitle(Session s) {
+  String _formatSessionSubtitle(Session s, String? ownerName, bool isOwner) {
     final start = DateFormat.yMMMd().add_jm().format(s.startedAt);
     final status = s.finalized ? 'Finalized' : 'In progress';
+    if (!isOwner && ownerName != null) {
+      return '$start • $status • Shared by $ownerName';
+    }
     return '$start • $status';
   }
 }
