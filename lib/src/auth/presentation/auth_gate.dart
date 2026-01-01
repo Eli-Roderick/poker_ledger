@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_providers.dart';
+import '../data/admin_config.dart';
 import '../../routing/app_shell.dart';
 import '../../migration/data/migration_service.dart';
 import '../../migration/presentation/migration_screen.dart';
 import 'login_screen.dart';
+import 'maintenance_screen.dart';
 
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key});
@@ -38,6 +40,13 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     return authState.when(
       data: (state) {
         if (state.session != null) {
+          final userId = state.session!.user.id;
+          
+          // Check maintenance mode - only admins can access
+          if (AdminConfig.maintenanceMode && !AdminConfig.isAdmin(userId)) {
+            return const MaintenanceScreen();
+          }
+          
           // User is logged in - check if migration needed
           if (!_checkedLocalData) {
             return const Scaffold(
