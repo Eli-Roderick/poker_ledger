@@ -16,25 +16,33 @@ class PlayersRepository {
     
     final data = await query.order('created_at', ascending: false);
     
-    // Fetch linked user display names
-    final players = <Player>[];
-    for (final e in data) {
-      final linkedUserId = e['linked_user_id'] as String?;
-      String? linkedUserDisplayName;
-      if (linkedUserId != null) {
-        final profile = await _client
-            .from('profiles')
-            .select('display_name')
-            .eq('id', linkedUserId)
-            .maybeSingle();
-        linkedUserDisplayName = profile?['display_name'] as String?;
-      }
-      players.add(Player.fromMap({
-        ...e,
-        'linked_user_display_name': linkedUserDisplayName,
-      }));
+    // Batch fetch all linked user display names in one query
+    final linkedUserIds = data
+        .map((e) => e['linked_user_id'] as String?)
+        .where((id) => id != null)
+        .cast<String>()
+        .toSet()
+        .toList();
+    
+    Map<String, String> displayNameById = {};
+    if (linkedUserIds.isNotEmpty) {
+      final profiles = await _client
+          .from('profiles')
+          .select('id, display_name')
+          .inFilter('id', linkedUserIds);
+      displayNameById = {
+        for (final p in profiles)
+          p['id'] as String: p['display_name'] as String? ?? 'Unknown'
+      };
     }
-    return players;
+    
+    return data.map((e) {
+      final linkedUserId = e['linked_user_id'] as String?;
+      return Player.fromMap({
+        ...e,
+        'linked_user_display_name': linkedUserId != null ? displayNameById[linkedUserId] : null,
+      });
+    }).toList();
   }
 
   Future<Player> add({

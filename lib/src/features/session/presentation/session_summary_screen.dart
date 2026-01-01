@@ -480,7 +480,7 @@ class _Balance {
   final int playerId;
   final int sessionPlayerId;
   final int netCents;
-  _Balance({required this.playerId, required this.sessionPlayerId, required this.netCents});
+  const _Balance({required this.playerId, required this.sessionPlayerId, required this.netCents});
 }
 
 class _Side {
@@ -493,13 +493,13 @@ class _Transfer {
   final int fromPlayerId;
   final int toPlayerId;
   final int amountCents;
-  _Transfer({required this.fromPlayerId, required this.toPlayerId, required this.amountCents});
+  const _Transfer({required this.fromPlayerId, required this.toPlayerId, required this.amountCents});
 }
 
 class _BankerLine {
   final int playerId;
   final int netCents; // positive -> banker pays player, negative -> player pays banker
-  _BankerLine({required this.playerId, required this.netCents});
+  const _BankerLine({required this.playerId, required this.netCents});
 }
 
 // Lightweight proxy to pass live-edited participant values into banker settlement computation
@@ -509,7 +509,7 @@ class _ParticipantProxy {
   final int buyInCentsTotal;
   final int? cashOutCents;
   final bool paidUpfront;
-  _ParticipantProxy({
+  const _ParticipantProxy({
     required this.id,
     required this.playerId,
     required this.buyInCentsTotal,

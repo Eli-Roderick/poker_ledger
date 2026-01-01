@@ -90,50 +90,48 @@ class GroupRepository {
 
   /// Get group members with profile info
   Future<List<GroupMember>> getGroupMembers(int groupId) async {
-    // Get group owner info
-    final group = await _client
-        .from('groups')
-        .select('owner_id')
-        .eq('id', groupId)
-        .single();
-
+    // Get group owner info and members in parallel
+    final groupFuture = _client.from('groups').select('owner_id').eq('id', groupId).single();
+    final membersFuture = _client.from('group_members').select('*').eq('group_id', groupId);
+    
+    final group = await groupFuture;
+    final membersData = await membersFuture;
     final ownerId = group['owner_id'] as String;
 
-    // Get owner profile separately
-    final ownerProfile = await _client
+    // Collect all user IDs to fetch profiles in batch
+    final allUserIds = <String>{ownerId};
+    for (final m in membersData) {
+      allUserIds.add(m['user_id'] as String);
+    }
+
+    // Batch fetch all profiles in one query
+    final profiles = await _client
         .from('profiles')
-        .select('display_name, email')
-        .eq('id', ownerId)
-        .maybeSingle();
+        .select('id, display_name, email')
+        .inFilter('id', allUserIds.toList());
+    
+    final profileById = <String, Map<String, dynamic>>{
+      for (final p in profiles) p['id'] as String: p
+    };
 
     final List<GroupMember> members = [];
 
     // Add owner as first member
+    final ownerProfile = profileById[ownerId];
     members.add(GroupMember(
-      id: 0, // Placeholder
+      id: 0,
       groupId: groupId,
       oderId: ownerId,
-      joinedAt: DateTime.now(), // Owner doesn't have a join date in group_members
+      joinedAt: DateTime.now(),
       displayName: ownerProfile?['display_name'] as String?,
       email: ownerProfile?['email'] as String?,
       isOwner: true,
     ));
 
-    // Get other members
-    final membersData = await _client
-        .from('group_members')
-        .select('*')
-        .eq('group_id', groupId);
-
+    // Add other members
     for (final m in membersData) {
       final oderId = m['user_id'] as String;
-      // Get profile for each member
-      final profile = await _client
-          .from('profiles')
-          .select('display_name, email')
-          .eq('id', oderId)
-          .maybeSingle();
-      
+      final profile = profileById[oderId];
       members.add(GroupMember(
         id: m['id'] as int,
         groupId: m['group_id'] as int,
@@ -256,21 +254,20 @@ class GroupRepository {
     // Groups to remove
     final toRemove = currentGroupIds.where((id) => !groupIds.contains(id)).toList();
 
-    // Add new groups
-    for (final groupId in toAdd) {
-      await _client.from('session_groups').insert({
-        'session_id': sessionId,
-        'group_id': groupId,
-      });
+    // Batch insert new groups
+    if (toAdd.isNotEmpty) {
+      await _client.from('session_groups').insert(
+        toAdd.map((groupId) => {'session_id': sessionId, 'group_id': groupId}).toList(),
+      );
     }
 
-    // Remove old groups
-    for (final groupId in toRemove) {
+    // Batch delete removed groups
+    if (toRemove.isNotEmpty) {
       await _client
           .from('session_groups')
           .delete()
           .eq('session_id', sessionId)
-          .eq('group_id', groupId);
+          .inFilter('group_id', toRemove);
     }
   }
 }

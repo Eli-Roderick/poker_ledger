@@ -27,11 +27,14 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  // Cache theme to avoid rebuilding on every frame
+  static final _theme = AppTheme.theme();
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Poker Ledger',
-      theme: AppTheme.theme(),
+      theme: _theme,
       home: const WebKeyboardFix(child: AuthGate()),
       debugShowCheckedModeBanner: false,
     );

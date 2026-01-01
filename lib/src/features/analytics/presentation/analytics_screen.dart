@@ -159,17 +159,16 @@ class AnalyticsScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              SliverList.separated(
-                itemBuilder: (_, i) {
-                  final activeTop = state.players.where((p) => p.active).toList();
-                  final p = activeTop[i];
-                  return _PlayerTile(p: p, currency: currency);
+              Builder(
+                builder: (context) {
+                  final activePlayers = state.players.where((p) => p.active).toList();
+                  final displayCount = activePlayers.length >= 3 ? 3 : activePlayers.length;
+                  return SliverList.separated(
+                    itemBuilder: (_, i) => _PlayerTile(p: activePlayers[i], currency: currency),
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemCount: displayCount,
+                  );
                 },
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemCount: () {
-                  final activeCount = state.players.where((p) => p.active).length;
-                  return activeCount >= 3 ? 3 : activeCount;
-                }(),
               ),
               SliverToBoxAdapter(
                 child: Padding(
