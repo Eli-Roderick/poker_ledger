@@ -107,7 +107,7 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
       final sessionsWithOwner = await repo.listSessionsInGroup(_filters.groupId!);
       sessions = sessionsWithOwner.map((sw) => sw.session).toList();
     } else {
-      sessions = await repo.listSessions();
+      sessions = await repo.listMySessions();
     }
     
     final filtered = sessions.where((s) {
@@ -116,11 +116,22 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
       return inRange && include;
     }).toList();
 
+    // Batch fetch all session players in one query for performance
+    final sessionIds = filtered.map((s) => s.id!).toList();
+    final allSessionPlayers = await repo.listSessionPlayersForMultipleSessions(sessionIds);
+    
+    // Group by session_id for easy lookup
+    final playersBySession = <int, List<Map<String, Object?>>>{};
+    for (final row in allSessionPlayers) {
+      final sid = row['session_id'] as int;
+      playersBySession.putIfAbsent(sid, () => []).add(row);
+    }
+
     // Build per-session aggregates (include deactivated players to preserve history)
     final sessionKpis = <SessionKPI>[];
     final playerMap = <int, PlayerAggregate>{};
     for (final s in filtered) {
-      final rows = await repo.listSessionPlayersWithNames(s.id!);
+      final rows = playersBySession[s.id!] ?? [];
       int buy = 0, cash = 0;
       for (final r in rows) {
         final pid = r['player_id'] as int;

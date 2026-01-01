@@ -44,33 +44,24 @@ class SessionsListNotifier extends AsyncNotifier<List<SessionWithOwner>> {
   @override
   Future<List<SessionWithOwner>> build() async {
     _repo = ref.read(sessionRepositoryProvider);
-    final filter = ref.watch(sessionsSourceFilterProvider);
-    return _loadSessions(filter);
-  }
-
-  Future<List<SessionWithOwner>> _loadSessions(SessionsFilterState filter) async {
-    switch (filter.source) {
-      case SessionSourceFilter.mySessions:
-        final sessions = await _repo.listMySessions();
-        return sessions.map((s) => SessionWithOwner(
-          session: s,
-          ownerName: 'You',
-          isOwner: true,
-        )).toList();
-      case SessionSourceFilter.all:
-        return _repo.listAllVisibleSessions();
-      case SessionSourceFilter.group:
-        if (filter.groupId == null) {
-          return [];
-        }
-        return _repo.listSessionsInGroup(filter.groupId!);
-    }
+    // Sessions list only shows user's own sessions
+    // Shared sessions only appear in Analytics when filtering by group
+    final sessions = await _repo.listMySessions();
+    return sessions.map((s) => SessionWithOwner(
+      session: s,
+      ownerName: 'You',
+      isOwner: true,
+    )).toList();
   }
 
   Future<void> refresh() async {
     state = const AsyncLoading();
-    final filter = ref.read(sessionsSourceFilterProvider);
-    state = AsyncData(await _loadSessions(filter));
+    final sessions = await _repo.listMySessions();
+    state = AsyncData(sessions.map((s) => SessionWithOwner(
+      session: s,
+      ownerName: 'You',
+      isOwner: true,
+    )).toList());
   }
 }
 

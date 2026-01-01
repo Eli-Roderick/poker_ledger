@@ -108,7 +108,7 @@ class SessionDetailScreen extends ConsumerWidget {
           ),
           IconButton(
             tooltip: 'Share to groups',
-            icon: const Icon(Icons.share),
+            icon: const Icon(Icons.group_add),
             onPressed: () => _showShareToGroupsDialog(context, ref, sessionId),
           ),
           IconButton(
@@ -512,6 +512,27 @@ class _MoneyInputDialogState extends State<_MoneyInputDialog> {
 }
 
 Future<void> _showShareToGroupsDialog(BuildContext context, WidgetRef ref, int sessionId) async {
+  // Check if session is finalized first
+  final session = await ref.read(sessionRepositoryProvider).getSessionById(sessionId);
+  if (session == null || !session.finalized) {
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Cannot Share'),
+          content: const Text('Sessions can only be shared after they have been finalized.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+    return;
+  }
+  
   final groups = await ref.read(myGroupsProvider.future);
   final currentGroupIds = await ref.read(groupRepositoryProvider).getSessionGroupIds(sessionId);
   

@@ -24,41 +24,42 @@ class AnalyticsScreen extends ConsumerWidget {
 
     final groupsAsync = ref.watch(myGroupsProvider);
     final currentFilters = async.valueOrNull?.filters;
-    final groupLabel = currentFilters?.groupName ?? 'All Sessions';
+    final groupLabel = currentFilters?.groupName ?? 'My Sessions';
+    final isGroupFilter = currentFilters?.groupId != null;
     
     return Scaffold(
       appBar: AppBar(
-        title: PopupMenuButton<dynamic>(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(groupLabel),
-              const Icon(Icons.arrow_drop_down),
-            ],
-          ),
-          onSelected: (value) {
-            if (value == 'all') {
-              ref.read(analyticsProvider.notifier).setFilters(
-                (currentFilters ?? const AnalyticsFilters()).clearGroup(),
-              );
-            } else if (value is Group) {
-              ref.read(analyticsProvider.notifier).setFilters(
-                (currentFilters ?? const AnalyticsFilters()).copyWith(
-                  groupId: value.id,
-                  groupName: value.name,
-                ),
-              );
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 'all', child: Text('All Sessions')),
-            const PopupMenuDivider(),
-            ...groupsAsync.when(
-              loading: () => [const PopupMenuItem(enabled: false, child: Text('Loading...'))],
-              error: (_, __) => <PopupMenuEntry<dynamic>>[],
-              data: (groups) => groups.map((g) => PopupMenuItem<Group>(value: g, child: Text(g.name))).toList(),
+        title: GestureDetector(
+          onTap: () => _showGroupFilterSheet(context, ref, groupsAsync, currentFilters),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(20),
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isGroupFilter ? Icons.group : Icons.person,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  groupLabel,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_drop_down,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
         ),
         actions: [
           IconButton(
@@ -606,3 +607,74 @@ Future<void> _exportAnalyticsCsv(AnalyticsState state) async {
 }
 
 // Player stats dialog removed; tapping players now navigates to PlayerDetailScreen.
+
+void _showGroupFilterSheet(BuildContext context, WidgetRef ref, AsyncValue<List<Group>> groupsAsync, AnalyticsFilters? currentFilters) {
+  showModalBottomSheet(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'View Analytics For',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('My Sessions'),
+              subtitle: const Text('Sessions you created'),
+              selected: currentFilters?.groupId == null,
+              onTap: () {
+                ref.read(analyticsProvider.notifier).setFilters(
+                  (currentFilters ?? const AnalyticsFilters()).clearGroup(),
+                );
+                Navigator.pop(sheetContext);
+              },
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Groups',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey),
+              ),
+            ),
+            ...groupsAsync.when(
+              loading: () => [const ListTile(title: Text('Loading...'))],
+              error: (_, __) => [const ListTile(title: Text('Error loading groups'))],
+              data: (groups) => groups.isEmpty
+                  ? [const ListTile(
+                      leading: Icon(Icons.info_outline),
+                      title: Text('No groups yet'),
+                      subtitle: Text('Create a group to see shared sessions'),
+                    )]
+                  : groups.map((g) => ListTile(
+                      leading: const Icon(Icons.group),
+                      title: Text(g.name),
+                      subtitle: Text('${g.memberCount} member${g.memberCount == 1 ? '' : 's'} • Shared sessions'),
+                      selected: currentFilters?.groupId == g.id,
+                      onTap: () {
+                        ref.read(analyticsProvider.notifier).setFilters(
+                          (currentFilters ?? const AnalyticsFilters()).copyWith(
+                            groupId: g.id,
+                            groupName: g.name,
+                          ),
+                        );
+                        Navigator.pop(sheetContext);
+                      },
+                    )).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      );
+    },
+  );
+}

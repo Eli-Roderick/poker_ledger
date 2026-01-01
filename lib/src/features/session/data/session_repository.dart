@@ -356,4 +356,31 @@ class SessionRepository {
       };
     }).toList();
   }
+
+  /// Batch fetch session players for multiple sessions at once (for analytics performance)
+  Future<List<Map<String, Object?>>> listSessionPlayersForMultipleSessions(List<int> sessionIds) async {
+    if (sessionIds.isEmpty) return [];
+    
+    final data = await _client
+        .from('session_players')
+        .select('id, session_id, player_id, buy_in_cents_total, cash_out_cents, paid_upfront, settlement_done, players(name, email, active)')
+        .inFilter('session_id', sessionIds);
+    
+    // Transform the nested player data to flat structure
+    return (data as List).map((row) {
+      final player = row['players'] as Map<String, dynamic>?;
+      return {
+        'sp_id': row['id'],
+        'session_id': row['session_id'],
+        'player_id': row['player_id'],
+        'buy_in_cents_total': row['buy_in_cents_total'],
+        'cash_out_cents': row['cash_out_cents'],
+        'paid_upfront': row['paid_upfront'],
+        'settlement_done': row['settlement_done'],
+        'player_name': player?['name'],
+        'player_email': player?['email'],
+        'player_active': player?['active'],
+      };
+    }).toList();
+  }
 }
