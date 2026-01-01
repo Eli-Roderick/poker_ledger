@@ -41,6 +41,7 @@ class PlayerAggregate {
   final int maxSingleWinCents; // best single-session net
   final int maxSingleLossCents; // worst single-session net (negative or 0)
   final bool active; // current activation status (for leaderboards)
+  final String? linkedUserId; // For merging players linked to same profile
   const PlayerAggregate({
     required this.playerId,
     required this.playerName,
@@ -49,6 +50,7 @@ class PlayerAggregate {
     required this.maxSingleWinCents,
     required this.maxSingleLossCents,
     required this.active,
+    this.linkedUserId,
   });
 }
 
@@ -141,8 +143,9 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
     }
 
     // Build per-session aggregates (include deactivated players to preserve history)
+    // For group analytics, merge players linked to the same profile using linked_user_id
     final sessionKpis = <SessionKPI>[];
-    final playerMap = <int, PlayerAggregate>{};
+    final playerMap = <String, PlayerAggregate>{}; // Key: linked_user_id or "player_$playerId"
     for (final sw in filtered) {
       final s = sw.session;
       final rows = playersBySession[s.id!] ?? [];
@@ -150,14 +153,20 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
       for (final r in rows) {
         final pid = r['player_id'] as int;
         final name = (r['player_name'] as String?) ?? 'Unknown';
+        final linkedUserId = r['linked_user_id'] as String?;
         final b = (r['buy_in_cents_total'] as int?) ?? 0;
         final c = (r['cash_out_cents'] as int?) ?? 0;
         final net = c - b;
         buy += b;
         cash += c;
-        final prev = playerMap[pid];
+        
+        // Use linked_user_id as key if available, otherwise use player_id
+        // This merges stats for players linked to the same profile
+        final key = linkedUserId ?? 'player_$pid';
+        
+        final prev = playerMap[key];
         if (prev == null) {
-          playerMap[pid] = PlayerAggregate(
+          playerMap[key] = PlayerAggregate(
             playerId: pid,
             playerName: name,
             sessions: 1,
@@ -165,16 +174,18 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
             maxSingleWinCents: net > 0 ? net : 0,
             maxSingleLossCents: net < 0 ? net : 0,
             active: true, // placeholder; will be replaced with actual active status later
+            linkedUserId: linkedUserId,
           );
         } else {
-          playerMap[pid] = PlayerAggregate(
-            playerId: pid,
+          playerMap[key] = PlayerAggregate(
+            playerId: prev.playerId, // Keep first player_id encountered
             playerName: prev.playerName,
             sessions: prev.sessions + 1,
             netCents: prev.netCents + net,
             maxSingleWinCents: net > prev.maxSingleWinCents ? net : prev.maxSingleWinCents,
             maxSingleLossCents: net < prev.maxSingleLossCents ? net : prev.maxSingleLossCents,
             active: prev.active,
+            linkedUserId: linkedUserId,
           );
         }
       }
@@ -189,20 +200,25 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
     }
 
     // Add quick-add totals to player nets (does not change sessions/max win/max loss)
+    // Quick-adds are only for the current user's own players, so use player_id as key
     final quickAddRows = await repo.listQuickAddSumsByPlayer();
     // Map player id -> name and active for players not present in sessions (include deactivated for historical quick-adds)
     final allPlayers = await repo.getAllPlayers();
     final nameById = {for (final pl in allPlayers) pl.id!: pl.name};
     final activeById = {for (final pl in allPlayers) pl.id!: (pl.active)};
+    final linkedUserById = {for (final pl in allPlayers) pl.id!: pl.linkedUserId};
     for (final row in quickAddRows) {
       final pid = row['player_id'] as int;
       final adj = (row['total_cents'] as int?) ?? 0;
       if (adj == 0) continue;
-      final prev = playerMap[pid];
+      // Use linked_user_id if available, otherwise player_id
+      final linkedUserId = linkedUserById[pid];
+      final key = linkedUserId ?? 'player_$pid';
+      final prev = playerMap[key];
       if (prev == null) {
         // Player has only quick-adds in the filtered range; sessions = 0, maxes = 0
         final name = nameById[pid] ?? 'Unknown';
-        playerMap[pid] = PlayerAggregate(
+        playerMap[key] = PlayerAggregate(
           playerId: pid,
           playerName: name,
           sessions: 0,
@@ -210,16 +226,18 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
           maxSingleWinCents: 0,
           maxSingleLossCents: 0,
           active: activeById[pid] ?? true,
+          linkedUserId: linkedUserId,
         );
       } else {
-        playerMap[pid] = PlayerAggregate(
-          playerId: pid,
+        playerMap[key] = PlayerAggregate(
+          playerId: prev.playerId,
           playerName: prev.playerName,
           sessions: prev.sessions,
           netCents: prev.netCents + adj,
           maxSingleWinCents: prev.maxSingleWinCents,
           maxSingleLossCents: prev.maxSingleLossCents,
           active: prev.active,
+          linkedUserId: prev.linkedUserId,
         );
       }
     }
@@ -235,6 +253,7 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
         maxSingleWinCents: agg.maxSingleWinCents,
         maxSingleLossCents: agg.maxSingleLossCents,
         active: isActive,
+        linkedUserId: agg.linkedUserId,
       );
     }).toList()
       ..sort((a, b) => b.netCents.compareTo(a.netCents));
