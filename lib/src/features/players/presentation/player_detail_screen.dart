@@ -230,12 +230,16 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
           }
           DateTime? lastActive;
           for (final s in data.sessions) {
-            final d = DateTime.fromMillisecondsSinceEpoch(s['started_at'] as int);
+            final startedAt = s['started_at'];
+            if (startedAt == null) continue;
+            final d = startedAt is String ? DateTime.parse(startedAt) : DateTime.fromMillisecondsSinceEpoch(startedAt as int);
             final la = lastActive;
             if (la == null || d.isAfter(la)) lastActive = d;
           }
           for (final q in data.quickAdds) {
-            final d = DateTime.fromMillisecondsSinceEpoch(q['created_at'] as int);
+            final createdAt = q['created_at'];
+            if (createdAt == null) continue;
+            final d = createdAt is String ? DateTime.parse(createdAt) : DateTime.fromMillisecondsSinceEpoch(createdAt as int);
             final la = lastActive;
             if (la == null || d.isAfter(la)) lastActive = d;
           }
@@ -243,17 +247,21 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
           // Merge session nets and quick adds into a single list sorted by date desc
           final items = <_HistoryItem>[];
           for (final s in data.sessions) {
+            final startedAt = s['started_at'];
+            final when = startedAt is String ? DateTime.parse(startedAt) : (startedAt != null ? DateTime.fromMillisecondsSinceEpoch(startedAt as int) : DateTime.now());
             items.add(_HistoryItem.session(
               sessionId: s['session_id'] as int,
               sessionName: (s['session_name'] as String?) ?? 'Session #${s['session_id']}',
-              when: DateTime.fromMillisecondsSinceEpoch(s['started_at'] as int),
+              when: when,
               netCents: (s['net_cents'] as int?) ?? 0,
             ));
           }
           for (final q in data.quickAdds) {
+            final createdAt = q['created_at'];
+            final when = createdAt is String ? DateTime.parse(createdAt) : (createdAt != null ? DateTime.fromMillisecondsSinceEpoch(createdAt as int) : DateTime.now());
             items.add(_HistoryItem.quickAdd(
               quickAddId: q['id'] as int?,
-              when: DateTime.fromMillisecondsSinceEpoch(q['created_at'] as int),
+              when: when,
               amountCents: q['amount_cents'] as int,
               note: q['note'] as String?,
             ));
