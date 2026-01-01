@@ -93,9 +93,30 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
   }
 
   Future<_PlayerHistoryData> _load() async {
-    final sessions = await _repo.listPlayerSessionNets(widget.playerId);
-    final quickAdds = await _repo.listQuickAdds(widget.playerId);
-    final totalBuyIns = await _repo.totalBuyInCents(widget.playerId);
+    // Sessions should work for shared players via RLS
+    List<Map<String, Object?>> sessions = [];
+    try {
+      sessions = await _repo.listPlayerSessionNets(widget.playerId);
+    } catch (_) {
+      // May fail for shared players - that's ok
+    }
+    
+    // Quick adds are only visible for own players
+    List<Map<String, Object?>> quickAdds = [];
+    try {
+      quickAdds = await _repo.listQuickAdds(widget.playerId);
+    } catch (_) {
+      // Expected for shared players - quick adds are private
+    }
+    
+    // Total buy-ins from sessions
+    int totalBuyIns = 0;
+    try {
+      totalBuyIns = await _repo.totalBuyInCents(widget.playerId);
+    } catch (_) {
+      // May fail for shared players
+    }
+    
     return _PlayerHistoryData(sessions: sessions, quickAdds: quickAdds, totalBuyInCents: totalBuyIns);
   }
 
