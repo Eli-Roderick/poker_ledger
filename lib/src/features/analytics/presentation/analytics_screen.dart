@@ -213,7 +213,7 @@ class AnalyticsScreen extends ConsumerWidget {
     final start = DateFormat.yMMMd().add_jm().format(s.startedAt);
     final status = s.finalized ? 'Finalized' : 'In progress';
     if (!isOwner && ownerName != null) {
-      return '$start • $status • Shared by $ownerName';
+      return '$start • $status\nShared by $ownerName';
     }
     return '$start • $status';
   }
