@@ -444,9 +444,9 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
+        initialChildSize: 0.95,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
         expand: false,
         builder: (context, scrollController) {
           return Column(
