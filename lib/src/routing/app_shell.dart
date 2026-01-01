@@ -27,7 +27,12 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_index],
+      resizeToAvoidBottomInset: true,
+      backgroundColor: const Color(0xFF111315),
+      body: IndexedStack(
+        index: _index,
+        children: _screens,
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),

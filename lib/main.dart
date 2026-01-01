@@ -28,24 +28,11 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      // Dismiss keyboard when tapping outside of text fields
-      onTap: () {
-        FocusManager.instance.primaryFocus?.unfocus();
-      },
-      child: MaterialApp(
-        title: 'Poker Ledger',
-        theme: AppTheme.theme(),
-        home: const AuthGate(),
-        debugShowCheckedModeBanner: false,
-        builder: (context, child) {
-          // Wrap with a colored container to prevent white background
-          return Container(
-            color: const Color(0xFF111315),
-            child: child,
-          );
-        },
-      ),
+    return MaterialApp(
+      title: 'Poker Ledger',
+      theme: AppTheme.theme(),
+      home: const AuthGate(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
