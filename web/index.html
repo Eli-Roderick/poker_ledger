@@ -42,5 +42,74 @@
 </head>
 <body style="background-color: #111315; margin: 0; padding: 0; height: 100%; overflow: hidden;">
   <script src="flutter_bootstrap.js" async></script>
+  <script>
+    // Workaround for Flutter web keyboard dismiss bug
+    // https://github.com/flutter/flutter/issues/179438
+    (function() {
+      let flutterViewElement = null;
+      let lastViewportHeight = 0;
+      let keyboardWasVisible = false;
+      
+      function findFlutterView() {
+        if (!flutterViewElement) {
+          // Try different selectors for various Flutter versions
+          flutterViewElement = document.querySelector('flutter-view') || 
+                               document.querySelector('flt-glass-pane') ||
+                               document.body.firstElementChild;
+        }
+        return flutterViewElement;
+      }
+      
+      function forceFlutterResize() {
+        const view = findFlutterView();
+        if (!view) return;
+        
+        // Force the view to recalculate by toggling a style
+        const originalTransform = view.style.transform;
+        view.style.transform = 'translateZ(0)';
+        
+        // Force reflow
+        void view.offsetHeight;
+        
+        // Restore and dispatch resize
+        requestAnimationFrame(function() {
+          view.style.transform = originalTransform;
+          window.dispatchEvent(new Event('resize'));
+        });
+      }
+
+      if (window.visualViewport) {
+        lastViewportHeight = window.visualViewport.height;
+        
+        window.visualViewport.addEventListener('resize', function() {
+          const currentHeight = window.visualViewport.height;
+          const windowHeight = window.innerHeight;
+          
+          // Keyboard visible if visualViewport is significantly smaller than window
+          const keyboardVisible = currentHeight < windowHeight * 0.85;
+          
+          // Keyboard was just hidden
+          if (keyboardWasVisible && !keyboardVisible) {
+            // Aggressive fix attempts
+            forceFlutterResize();
+            setTimeout(forceFlutterResize, 50);
+            setTimeout(forceFlutterResize, 150);
+            setTimeout(forceFlutterResize, 300);
+            setTimeout(forceFlutterResize, 500);
+          }
+          
+          keyboardWasVisible = keyboardVisible;
+          lastViewportHeight = currentHeight;
+        });
+        
+        // Also try on scroll events (back gesture can trigger scroll)
+        window.visualViewport.addEventListener('scroll', function() {
+          if (!keyboardWasVisible) {
+            setTimeout(forceFlutterResize, 100);
+          }
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

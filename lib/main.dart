@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'src/auth/presentation/auth_gate.dart';
 import 'src/theme/app_theme.dart';
+import 'src/utils/web_keyboard_fix.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +32,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Poker Ledger',
       theme: AppTheme.theme(),
-      home: const AuthGate(),
+      home: const WebKeyboardFix(child: AuthGate()),
       debugShowCheckedModeBanner: false,
     );
   }

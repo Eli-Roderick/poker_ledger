@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../features/players/presentation/players_list_screen.dart';
@@ -27,7 +28,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: !kIsWeb,
       backgroundColor: const Color(0xFF111315),
       body: IndexedStack(
         index: _index,
