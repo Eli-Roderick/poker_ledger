@@ -185,7 +185,8 @@ class AnalyticsScreen extends ConsumerWidget {
                   final sessionName = s.session.name?.isNotEmpty == true 
                       ? s.session.name! 
                       : 'Session #${s.session.id ?? '-'}';
-                  final subtitle = _formatSessionSubtitle(s.session, s.ownerName, s.isOwner);
+                  final isGroupFilter = state.filters.groupId != null;
+                  final subtitle = _formatSessionSubtitle(s.session, s.ownerName, s.isOwner, isGroupFilter);
                   return ListTile(
                     dense: true,
                     title: Text(sessionName),
@@ -217,10 +218,11 @@ class AnalyticsScreen extends ConsumerWidget {
     );
   }
 
-  String _formatSessionSubtitle(Session s, String? ownerName, bool isOwner) {
+  String _formatSessionSubtitle(Session s, String? ownerName, bool isOwner, bool isGroupFilter) {
     final start = DateFormat.yMMMd().add_jm().format(s.startedAt);
     final status = s.finalized ? 'Finalized' : 'In progress';
-    if (!isOwner && ownerName != null) {
+    // In group analytics, always show who shared the session (including yourself)
+    if (isGroupFilter && ownerName != null) {
       return '$start • $status\nShared by $ownerName';
     }
     return '$start • $status';
