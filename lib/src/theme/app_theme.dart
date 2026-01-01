@@ -19,6 +19,11 @@ class AppTheme {
       scaffoldBackgroundColor: const Color(0xFF111315),
       canvasColor: const Color(0xFF111315),
       cardColor: const Color(0xFF1A1C1E),
+      dialogBackgroundColor: const Color(0xFF1A1C1E),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Color(0xFF1A1C1E),
+        modalBackgroundColor: Color(0xFF1A1C1E),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Color(0xFF1A1C1E),
         foregroundColor: Colors.white,
