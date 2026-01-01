@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import '../../session/domain/session_models.dart';
+import '../../session/presentation/session_summary_screen.dart';
 import '../../groups/data/group_providers.dart';
 import '../../groups/domain/group_models.dart';
 
@@ -198,6 +199,13 @@ class AnalyticsScreen extends ConsumerWidget {
                             style: TextStyle(color: s.netCents == 0 ? Theme.of(context).colorScheme.outline : (s.netCents > 0 ? Colors.green : Colors.red))),
                       ],
                     ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => SessionSummaryScreen(sessionId: s.session.id!),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
