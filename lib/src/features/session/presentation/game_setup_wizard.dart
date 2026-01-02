@@ -217,7 +217,7 @@ class _PlayersPage extends ConsumerWidget {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(player.name),
-                        subtitle: Text(_fmtCents(sp.buyInCentsTotal)),
+                        subtitle: Text('Buy-Ins Total: ${_fmtCents(sp.buyInCentsTotal)}'),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -274,14 +274,15 @@ class _PlayersPage extends ConsumerWidget {
                 decoration: const InputDecoration(labelText: 'Buy-in amount'),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
-              const SizedBox(height: 12),
-              // Preset buy-in buttons
-              Wrap(
-                spacing: 8,
+              const SizedBox(height: 16),
+              // Preset buy-in buttons - centered row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [10, 20, 50, 100].map((amount) => 
-                  ActionChip(
-                    label: Text('\$$amount'),
+                  OutlinedButton(
                     onPressed: () => setDialogState(() => buyInController.text = '$amount.00'),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12)),
+                    child: Text('\$$amount'),
                   ),
                 ).toList(),
               ),
@@ -522,36 +523,78 @@ class _ModeOption extends StatelessWidget {
   }
 }
 
-// Page 2: Summary wrapper with title and back button
-class _SummaryPageWrapper extends StatelessWidget {
+// Page 2: Summary wrapper with title and Back + Next buttons (like mode page)
+class _SummaryPageWrapper extends ConsumerWidget {
   final int sessionId;
   final VoidCallback onBack;
 
   const _SummaryPageWrapper({required this.sessionId, required this.onBack});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Title
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Text('Cash outs & settlement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-        ),
-        Expanded(
-          child: SessionSummaryScreen(sessionId: sessionId, showAppBar: false),
-        ),
-        // Back button
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              OutlinedButton(onPressed: onBack, child: const Text('Back')),
-            ],
-          ),
-        ),
-      ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    final asyncState = ref.watch(sessionDetailProvider(sessionId));
+    
+    return asyncState.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => Center(child: Text('Error: $e')),
+      data: (data) {
+        final participants = data.participants;
+        final cashedOutCount = participants.where((p) => p.cashOutCents != null).length;
+        final allCashedOut = participants.isNotEmpty && cashedOutCount == participants.length;
+        final missingCashOuts = participants.length - cashedOutCount;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: SessionSummaryScreen(sessionId: sessionId, showAppBar: false),
+            ),
+            // Bottom navigation - same layout as mode page
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  OutlinedButton(onPressed: onBack, child: const Text('Back')),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: allCashedOut ? () => _showFinalizeDialog(context, ref, data) : null,
+                      child: Text(allCashedOut 
+                          ? 'Finalize Game' 
+                          : 'Enter $missingCashOuts more cash out${missingCashOuts == 1 ? '' : 's'}'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
+  }
+
+  Future<void> _showFinalizeDialog(BuildContext context, WidgetRef ref, SessionDetailState data) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Finalize Game'),
+        content: const Text('Are you sure you want to finalize this game? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Finalize')),
+        ],
+      ),
+    );
+    
+    if (ok == true) {
+      await ref.read(sessionRepositoryProvider).finalizeSession(sessionId);
+      ref.invalidate(sessionDetailProvider(sessionId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Game finalized!'), backgroundColor: Colors.green),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    }
   }
 }

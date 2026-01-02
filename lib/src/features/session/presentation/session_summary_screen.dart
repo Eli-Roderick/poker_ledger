@@ -133,145 +133,72 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           final totalCashOuts = participants.fold<int>(0, (sum, p) => sum + (p.cashOutCents ?? 0));
           final delta = totalCashOuts - totalBuyIns; // should be 0 normally (ignoring rake)
 
-          // Calculate progress for step indicator
-          final cashedOutCount = participants.where((p) => p.cashOutCents != null).length;
-          final allCashedOut = participants.isNotEmpty && cashedOutCount == participants.length;
-          
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Progress banner
-              if (!data.session.finalized)
-                _ProgressBanner(
-                  cashedOutCount: cashedOutCount,
-                  totalCount: participants.length,
-                  allCashedOut: allCashedOut,
-                ),
-              if (!data.session.finalized) const SizedBox(height: 16),
-              
-              // Section header
-              Row(
-                children: [
-                  Icon(Icons.attach_money, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 8),
-                  const Text('Cash outs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  if (isBanker)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text('Banker Mode', style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w500)),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ...participants.map((p) {
+              // Simple player rows with cash out fields (like players page)
+              ...participants.asMap().entries.map((entry) {
+                final index = entry.key;
+                final p = entry.value;
                 final c = _controllers[p.id]!;
                 final playerName = data.allPlayers.firstWhere((e) => e.id == p.playerId).name;
                 final isBankerPlayer = isBanker && p.id == bankerSpId;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        // Player avatar
-                        CircleAvatar(
-                          radius: 18,
-                          backgroundColor: isBankerPlayer 
-                              ? Colors.green 
-                              : Theme.of(context).colorScheme.primaryContainer,
-                          child: Text(
-                            playerName[0].toUpperCase(),
-                            style: TextStyle(
-                              color: isBankerPlayer 
-                                  ? Colors.white 
-                                  : Theme.of(context).colorScheme.onPrimaryContainer,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Player name and buy-in
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(playerName, style: const TextStyle(fontWeight: FontWeight.w500)),
-                                  if (isBankerPlayer) ...[
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Text('Banker', style: TextStyle(fontSize: 10, color: Colors.white)),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              if (isBanker)
-                                Text('Buy-in: ${_fmtCents(p.buyInCentsTotal)}', 
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          // Player name and buy-in
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(isBankerPlayer ? '$playerName (Banker)' : playerName),
+                                Text('Buy-Ins Total: ${_fmtCents(p.buyInCentsTotal)}', 
                                     style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                            ],
-                          ),
-                        ),
-                        // Paid upfront toggle (banker mode only, non-banker players)
-                        if (isBanker && !isBankerPlayer) ...[
-                          Column(
-                            children: [
-                              Switch(
-                                value: p.paidUpfront,
-                                onChanged: (v) async {
-                                  await ref.read(sessionRepositoryProvider).updatePaidUpfront(sessionPlayerId: p.id!, paidUpfront: v);
-                                  ref.invalidate(sessionDetailProvider(widget.sessionId));
-                                },
-                              ),
-                              Text('Paid', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-                            ],
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        // Cash out field
-                        SizedBox(
-                          width: 100,
-                          child: TextField(
-                            controller: c,
-                            decoration: InputDecoration(
-                              labelText: 'Cash out',
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              filled: true,
-                              fillColor: p.cashOutCents != null 
-                                  ? Colors.green.withValues(alpha: 0.1) 
-                                  : null,
+                              ],
                             ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            textAlign: TextAlign.center,
-                            onChanged: (raw) {
-                              _saveDebouncers[p.id!]?.cancel();
-                              _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
-                                final text = raw.trim();
-                                final cents = _parseMoneyToCents(text);
-                                await ref.read(sessionRepositoryProvider).updateCashOut(
-                                      sessionPlayerId: p.id!,
-                                      cashOutCents: text.isEmpty ? null : cents,
-                                    );
-                                ref.invalidate(sessionDetailProvider(widget.sessionId));
-                              });
-                            },
                           ),
-                        ),
-                      ],
+                          // Cash out field
+                          SizedBox(
+                            width: 80,
+                            child: TextField(
+                              controller: c,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textAlign: TextAlign.center,
+                              onChanged: (raw) {
+                                _saveDebouncers[p.id!]?.cancel();
+                                _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
+                                  final text = raw.trim();
+                                  final cents = _parseMoneyToCents(text);
+                                  await ref.read(sessionRepositoryProvider).updateCashOut(
+                                        sessionPlayerId: p.id!,
+                                        cashOutCents: text.isEmpty ? null : cents,
+                                      );
+                                  ref.invalidate(sessionDetailProvider(widget.sessionId));
+                                });
+                              },
+                            ),
+                          ),
+                          // Buy-in total to the right of cash out
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 70,
+                            child: Text(_fmtCents(p.buyInCentsTotal), 
+                                textAlign: TextAlign.right,
+                                style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                    if (index < participants.length - 1) const Divider(height: 1),
+                  ],
                 );
               }),
               const SizedBox(height: 16),
@@ -625,78 +552,6 @@ class _BankerLine {
   final int playerId;
   final int netCents; // positive -> banker pays player, negative -> player pays banker
   const _BankerLine({required this.playerId, required this.netCents});
-}
-
-// Progress banner widget for session summary
-class _ProgressBanner extends StatelessWidget {
-  final int cashedOutCount;
-  final int totalCount;
-  final bool allCashedOut;
-  
-  const _ProgressBanner({
-    required this.cashedOutCount,
-    required this.totalCount,
-    required this.allCashedOut,
-  });
-  
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    String stepText;
-    String helpText;
-    IconData icon;
-    Color color;
-    
-    if (!allCashedOut) {
-      stepText = 'Step 1: Enter Cash Outs';
-      helpText = cashedOutCount == 0
-          ? 'Enter how much each player cashed out for'
-          : '$cashedOutCount of $totalCount players done';
-      icon = Icons.edit;
-      color = Colors.orange;
-    } else {
-      stepText = 'Step 2: Finalize';
-      helpText = 'All cash outs entered! Tap "Finalize Game" below';
-      icon = Icons.check_circle;
-      color = Colors.green;
-    }
-    
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  stepText,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                  ),
-                ),
-                Text(
-                  helpText,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // Lightweight proxy to pass live-edited participant values into banker settlement computation
