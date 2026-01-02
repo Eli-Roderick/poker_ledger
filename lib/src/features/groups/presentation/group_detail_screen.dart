@@ -521,14 +521,14 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.green.shade50,
+                      color: Colors.green.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.shade200),
+                      border: Border.all(color: Colors.green.withOpacity(0.3)),
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
-                          backgroundColor: Colors.green.shade100,
+                          backgroundColor: Colors.green.withOpacity(0.2),
                           child: const Icon(Icons.person, color: Colors.green),
                         ),
                         const SizedBox(width: 12),
@@ -543,9 +543,7 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                               if (_selectedUser!.email != null)
                                 Text(
                                   _selectedUser!.email!,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: Colors.grey.shade600,
-                                      ),
+                                  style: Theme.of(context).textTheme.bodySmall,
                                 ),
                             ],
                           ),
