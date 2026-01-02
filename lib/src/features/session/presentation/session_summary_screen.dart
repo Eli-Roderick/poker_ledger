@@ -136,35 +136,38 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Player rows with cash out fields (using ListTile like players page)
-              ...participants.asMap().entries.map((entry) {
-                final index = entry.key;
-                final p = entry.value;
+              // Player rows with cash out fields
+              ...participants.map((p) {
                 final c = _controllers[p.id]!;
                 final playerName = data.allPlayers.firstWhere((e) => e.id == p.playerId).name;
                 final isBankerPlayer = isBanker && p.id == bankerSpId;
-                return Column(
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(isBankerPlayer ? '$playerName (Banker)' : playerName),
-                      subtitle: Text('Buy-Ins Total: ${_fmtCents(p.buyInCentsTotal)}'),
-                      trailing: SizedBox(
-                        width: 100,
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isBankerPlayer ? '$playerName (Banker)' : playerName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              'Buy-Ins Total: ${_fmtCents(p.buyInCentsTotal)}',
+                              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
                         child: TextField(
                           controller: c,
-                          decoration: InputDecoration(
-                            labelText: 'Cash out',
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                            filled: true,
-                            fillColor: p.cashOutCents != null 
-                                ? Colors.green.withValues(alpha: 0.1) 
-                                : null,
-                          ),
+                          decoration: const InputDecoration(labelText: 'Cash out'),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          textAlign: TextAlign.center,
                           onChanged: (raw) {
                             _saveDebouncers[p.id!]?.cancel();
                             _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
@@ -179,9 +182,8 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                           },
                         ),
                       ),
-                    ),
-                    if (index < participants.length - 1) const Divider(height: 1),
-                  ],
+                    ],
+                  ),
                 );
               }),
               const SizedBox(height: 16),
@@ -380,10 +382,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
     
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Game finalized! 🎉'),
-          backgroundColor: Colors.green,
-        ),
+        const SnackBar(content: Text('Game finalized')),
       );
       // Pop back to home
       Navigator.of(context).popUntil((route) => route.isFirst);

@@ -28,6 +28,7 @@ class AppTheme {
         backgroundColor: Color(0xFF1A1C1E),
         foregroundColor: Colors.white,
         centerTitle: true,
+        scrolledUnderElevation: 0, // Prevent color change on scroll
       ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

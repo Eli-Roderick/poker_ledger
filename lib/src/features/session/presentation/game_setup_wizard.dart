@@ -275,14 +275,17 @@ class _PlayersPage extends ConsumerWidget {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 16),
-              // Preset buy-in buttons - centered row
+              // Preset buy-in buttons - 3 buttons, evenly spaced, aligned with text fields
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [10, 20, 50, 100].map((amount) => 
-                  OutlinedButton(
-                    onPressed: () => setDialogState(() => buyInController.text = '$amount.00'),
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12)),
-                    child: Text('\$$amount'),
+                children: [20, 50, 100].map((amount) => 
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: OutlinedButton(
+                        onPressed: () => setDialogState(() => buyInController.text = '$amount.00'),
+                        child: Text('\$$amount'),
+                      ),
+                    ),
                   ),
                 ).toList(),
               ),
@@ -591,7 +594,7 @@ class _SummaryPageWrapper extends ConsumerWidget {
       ref.invalidate(sessionDetailProvider(sessionId));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Game finalized!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Game finalized')),
         );
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
