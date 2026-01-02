@@ -93,11 +93,13 @@ class _PlayersListScreenState extends ConsumerState<PlayersListScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
-          final created = await showDialog<_CreatePlayerResult?>(
+          final created = await showModalBottomSheet<_CreatePlayerResult?>(
             context: context,
-            builder: (context) => const _CreatePlayerDialog(),
+            isScrollControlled: true,
+            useSafeArea: true,
+            builder: (context) => const _AddPlayerSheet(),
           );
-          if (created != null && created.name.trim().isNotEmpty) {
+          if (created != null && created.linkedUserId != null) {
             await ref.read(playersListProvider.notifier).addPlayer(
                   name: created.name.trim(),
                   email: created.email?.trim(),
@@ -261,36 +263,18 @@ class PlayerTile extends ConsumerWidget {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: ListTile(
-        title: Row(
-          children: [
-            Expanded(child: Text(player.name)),
-            if (player.isLinked)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: Text(
-                  'Linked',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.green),
-                ),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Guest',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey),
-                ),
-              ),
-          ],
+        leading: CircleAvatar(
+          backgroundColor: player.isLinked
+              ? Theme.of(context).colorScheme.primaryContainer
+              : Colors.grey.shade200,
+          child: Icon(
+            Icons.person,
+            color: player.isLinked
+                ? Theme.of(context).colorScheme.primary
+                : Colors.grey,
+          ),
         ),
+        title: Text(player.name),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -300,6 +284,8 @@ class PlayerTile extends ConsumerWidget {
               Text(player.email!, style: Theme.of(context).textTheme.bodySmall),
             if (player.phone != null && player.phone!.isNotEmpty)
               Text(player.phone!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline)),
+            if (player.isGuest)
+              Text('Legacy guest', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orange)),
           ],
         ),
         onTap: () async {
@@ -321,37 +307,6 @@ class PlayerTile extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (player.isGuest)
-              IconButton(
-                tooltip: 'Link to user',
-                icon: const Icon(Icons.link),
-                onPressed: () => _showLinkUserDialog(context, ref, player),
-              ),
-            if (player.isLinked)
-              IconButton(
-                tooltip: 'Unlink user',
-                icon: Icon(Icons.link_off, color: Colors.green.shade300),
-                onPressed: () async {
-                  if (player.id == null) return;
-                  final ok = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Unlink user?'),
-                      content: Text('This will convert ${player.name} back to a guest player.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Unlink')),
-                      ],
-                    ),
-                  );
-                  if (ok == true) {
-                    await ref.read(playersListProvider.notifier).unlinkPlayer(playerId: player.id!);
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${player.name} unlinked')));
-                    }
-                  }
-                },
-              ),
             if (player.active)
               IconButton(
                 tooltip: 'Deactivate',
@@ -398,148 +353,6 @@ class PlayerTile extends ConsumerWidget {
   }
 }
 
-Future<void> _showLinkUserDialog(BuildContext context, WidgetRef ref, Player player) async {
-  final searchCtrl = TextEditingController();
-  List<UserSearchResult> searchResults = [];
-  bool isSearching = false;
-  UserSearchResult? selectedUser;
-
-  await showDialog(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setState) {
-        Future<void> searchUsers(String query) async {
-          if (query.trim().isEmpty) {
-            setState(() {
-              searchResults = [];
-              isSearching = false;
-            });
-            return;
-          }
-          setState(() => isSearching = true);
-          try {
-            final results = await ref.read(playersListProvider.notifier).searchUsers(query);
-            setState(() {
-              searchResults = results;
-              isSearching = false;
-            });
-          } catch (e) {
-            setState(() => isSearching = false);
-          }
-        }
-
-        return AlertDialog(
-          title: Text('Link ${player.name} to User'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: searchCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Search by email or name',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: isSearching
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: Padding(
-                              padding: EdgeInsets.all(12),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : null,
-                  ),
-                  onChanged: (q) {
-                    Future.delayed(const Duration(milliseconds: 400), () {
-                      if (searchCtrl.text == q) searchUsers(q);
-                    });
-                  },
-                ),
-                if (searchResults.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    constraints: const BoxConstraints(maxHeight: 150),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: searchResults.length,
-                      itemBuilder: (context, index) {
-                        final user = searchResults[index];
-                        final isSelected = selectedUser?.id == user.id;
-                        return ListTile(
-                          dense: true,
-                          selected: isSelected,
-                          leading: const Icon(Icons.person),
-                          title: Text(user.displayName ?? 'No name'),
-                          subtitle: Text(user.email ?? ''),
-                          onTap: () => setState(() => selectedUser = user),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-                if (selectedUser != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Selected: ${selectedUser!.displayName ?? selectedUser!.email}',
-                            style: const TextStyle(color: Colors.green),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: selectedUser == null
-                  ? null
-                  : () async {
-                      await ref.read(playersListProvider.notifier).linkPlayerToUser(
-                            playerId: player.id!,
-                            userId: selectedUser!.id,
-                          );
-                      if (dialogContext.mounted) {
-                        Navigator.pop(dialogContext);
-                      }
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${player.name} linked to ${selectedUser!.displayName ?? selectedUser!.email}')),
-                        );
-                      }
-                    },
-              child: const Text('Link'),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-}
-
 class ListEmptyState extends StatelessWidget {
   const ListEmptyState({super.key});
   @override
@@ -550,7 +363,7 @@ class ListEmptyState extends StatelessWidget {
         SizedBox(height: 120),
         Icon(Icons.people_outline, size: 72, color: Colors.white70),
         SizedBox(height: 12),
-        Center(child: Text('No players yet. Tap "+ Add Player" to create one.')),
+        Center(child: Text('No players yet. Tap "+ Add Player" to add one.')),
       ],
     );
   }
@@ -564,30 +377,24 @@ class _CreatePlayerResult {
   const _CreatePlayerResult({required this.name, this.email, this.phone, this.linkedUserId});
 }
 
-class _CreatePlayerDialog extends ConsumerStatefulWidget {
-  const _CreatePlayerDialog();
+class _AddPlayerSheet extends ConsumerStatefulWidget {
+  const _AddPlayerSheet();
   @override
-  ConsumerState<_CreatePlayerDialog> createState() => _CreatePlayerDialogState();
+  ConsumerState<_AddPlayerSheet> createState() => _AddPlayerSheetState();
 }
 
-class _CreatePlayerDialogState extends ConsumerState<_CreatePlayerDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+class _AddPlayerSheetState extends ConsumerState<_AddPlayerSheet> {
   final _searchCtrl = TextEditingController();
-  
-  bool _isSearchingUsers = false;
+  final _nameCtrl = TextEditingController();
+  Timer? _debounce;
+  bool _isSearching = false;
   List<UserSearchResult> _searchResults = [];
   UserSearchResult? _selectedUser;
-  Timer? _debounce;
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
-    _emailCtrl.dispose();
-    _phoneCtrl.dispose();
     _searchCtrl.dispose();
+    _nameCtrl.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -596,24 +403,24 @@ class _CreatePlayerDialogState extends ConsumerState<_CreatePlayerDialog> {
     if (query.trim().isEmpty) {
       setState(() {
         _searchResults = [];
-        _isSearchingUsers = false;
+        _isSearching = false;
       });
       return;
     }
-    
-    setState(() => _isSearchingUsers = true);
-    
+
+    setState(() => _isSearching = true);
+
     try {
       final results = await ref.read(playersListProvider.notifier).searchUsers(query);
       if (mounted) {
         setState(() {
           _searchResults = results;
-          _isSearchingUsers = false;
+          _isSearching = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isSearchingUsers = false);
+        setState(() => _isSearching = false);
       }
     }
   }
@@ -629,7 +436,6 @@ class _CreatePlayerDialogState extends ConsumerState<_CreatePlayerDialog> {
     setState(() {
       _selectedUser = user;
       _nameCtrl.text = user.displayName ?? user.email ?? 'User';
-      _emailCtrl.text = user.email ?? '';
       _searchCtrl.clear();
       _searchResults = [];
     });
@@ -639,149 +445,250 @@ class _CreatePlayerDialogState extends ConsumerState<_CreatePlayerDialog> {
     setState(() {
       _selectedUser = null;
       _nameCtrl.clear();
-      _emailCtrl.clear();
     });
+  }
+
+  void _addPlayer() {
+    if (_selectedUser == null) return;
+    final name = _nameCtrl.text.trim().isEmpty 
+        ? (_selectedUser!.displayName ?? _selectedUser!.email ?? 'User')
+        : _nameCtrl.text.trim();
+    Navigator.pop(
+      context,
+      _CreatePlayerResult(
+        name: name,
+        email: _selectedUser!.email,
+        linkedUserId: _selectedUser!.id,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add Player'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.95,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Column(
             children: [
-              Text(
-                'Search for an existing user or create a guest:',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _searchCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Search users by email/name',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _isSearchingUsers 
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: Padding(
-                            padding: EdgeInsets.all(12),
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : null,
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                onChanged: _onSearchChanged,
               ),
-              if (_searchResults.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 150),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
+              // Title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Add Player',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Search field
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: _searchCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Search by email or name',
+                    hintText: 'Find a user to add as a player...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _isSearching
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : _searchCtrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _searchResults = []);
+                                },
+                              )
+                            : null,
                   ),
+                  onChanged: _onSearchChanged,
+                ),
+              ),
+              // Selected user
+              if (_selectedUser != null) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: Colors.green.shade100,
+                          child: const Icon(Icons.person, color: Colors.green),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedUser!.displayName ?? 'No name',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              if (_selectedUser!.email != null)
+                                Text(
+                                  _selectedUser!.email!,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Colors.grey.shade600,
+                                      ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: _clearSelectedUser,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Custom name field
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: TextField(
+                    controller: _nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Player name (optional)',
+                      hintText: _selectedUser!.displayName ?? 'Custom display name',
+                      helperText: 'Leave blank to use their account name',
+                    ),
+                  ),
+                ),
+              ],
+              // Search results
+              if (_searchResults.isNotEmpty && _selectedUser == null)
+                Expanded(
                   child: ListView.builder(
-                    shrinkWrap: true,
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemCount: _searchResults.length,
                     itemBuilder: (context, index) {
                       final user = _searchResults[index];
-                      return ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.person),
-                        title: Text(user.displayName ?? 'No name'),
-                        subtitle: Text(user.email ?? ''),
-                        onTap: () => _selectUser(user),
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            child: Icon(
+                              Icons.person,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          title: Text(user.displayName ?? 'No name'),
+                          subtitle: Text(user.email ?? ''),
+                          trailing: const Icon(Icons.add_circle_outline),
+                          onTap: () => _selectUser(user),
+                        ),
                       );
                     },
                   ),
-                ),
-              ],
-              if (_selectedUser != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.link, color: Colors.green),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Linked to user',
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.green),
-                            ),
-                            Text(_selectedUser!.displayName ?? _selectedUser!.email ?? 'User'),
-                          ],
+                )
+              else if (_searchResults.isEmpty && _searchCtrl.text.isNotEmpty && !_isSearching && _selectedUser == null)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No users found',
+                          style: TextStyle(color: Colors.grey.shade600),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: _clearSelectedUser,
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          'They need to create an account first',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey.shade500,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_selectedUser == null)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_search, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Search for a user to add',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Players must have an account',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey.shade500,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              Text(
-                _selectedUser != null ? 'Player details (from linked user):' : 'Guest player details:',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: 'Name'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Name required' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _emailCtrl,
-                decoration: const InputDecoration(labelText: 'Email (optional)'),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _phoneCtrl,
-                decoration: const InputDecoration(labelText: 'Phone (optional)'),
-                keyboardType: TextInputType.phone,
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () {
-            if (_formKey.currentState!.validate()) {
-              Navigator.pop(
-                context,
-                _CreatePlayerResult(
-                  name: _nameCtrl.text,
-                  email: _emailCtrl.text.isEmpty ? null : _emailCtrl.text,
-                  phone: _phoneCtrl.text.isEmpty ? null : _phoneCtrl.text,
-                  linkedUserId: _selectedUser?.id,
+              // Add button
+              if (_selectedUser != null)
+                const Spacer(),
+              if (_selectedUser != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _addPlayer,
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('Add Player'),
+                    ),
+                  ),
                 ),
-              );
-            }
-          },
-          child: Text(_selectedUser != null ? 'Add Linked Player' : 'Add Guest'),
-        ),
-      ],
+            ],
+          );
+        },
+      ),
     );
   }
 }
