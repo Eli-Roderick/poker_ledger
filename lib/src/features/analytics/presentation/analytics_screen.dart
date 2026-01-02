@@ -24,14 +24,12 @@ class AnalyticsScreen extends ConsumerWidget {
     final async = ref.watch(analyticsProvider);
     final currency = NumberFormat.simpleCurrency();
 
-    final groupsAsync = ref.watch(myGroupsProvider);
     final currentFilters = async.valueOrNull?.filters;
     final groupLabel = currentFilters?.groupName ?? 'My Sessions';
     final isGroupFilter = currentFilters?.groupId != null;
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Analytics'),
         leading: IconButton(
           icon: const Icon(Icons.help_outline),
           onPressed: () => context.showHelp(HelpPage.analytics),
