@@ -35,7 +35,7 @@ class SessionScreen extends ConsumerWidget {
               if (ok == true) {
                 await ref.read(openSessionProvider.notifier).finalize();
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session finalized')));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Game finalized')));
                 }
               }
             },

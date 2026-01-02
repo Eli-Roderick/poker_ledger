@@ -104,7 +104,7 @@ class AnalyticsScreen extends ConsumerWidget {
               if (state == null) return;
               await _exportAnalyticsCsv(state);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Analytics CSV exported')));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stats CSV exported')));
               }
             },
           ),
@@ -717,7 +717,7 @@ Future<void> _exportAnalyticsCsv(AnalyticsState state) async {
   final dir = await getTemporaryDirectory();
   final file = File(p.join(dir.path, 'analytics_summary.csv'));
   await file.writeAsString(csvStr);
-  await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Analytics Summary CSV'));
+  await SharePlus.instance.share(ShareParams(files: [XFile(file.path)], subject: 'Stats Summary CSV'));
 }
 
 // Player stats dialog removed; tapping players now navigates to PlayerDetailScreen.

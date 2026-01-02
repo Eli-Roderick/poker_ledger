@@ -106,7 +106,7 @@ class SessionDetailScreen extends ConsumerWidget {
                 await ref.read(analyticsProvider.notifier).refresh();
                 ref.read(sessionsListProvider.notifier).refresh();
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session finalized')));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Game finalized')));
                 }
               }
             },
@@ -275,22 +275,32 @@ class SessionDetailScreen extends ConsumerWidget {
           );
         },
       ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: FilledButton.icon(
-            icon: const Icon(Icons.attach_money),
-            label: const Text('Cash Outs & Settlement'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+      bottomNavigationBar: asyncState.whenOrNull(
+        data: (data) {
+          final hasEnoughPlayers = data.participants.length >= 2;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: FilledButton.icon(
+                icon: Icon(hasEnoughPlayers ? Icons.attach_money : Icons.people),
+                label: Text(hasEnoughPlayers 
+                    ? 'Cash Outs & Settlement' 
+                    : 'Add ${2 - data.participants.length} more player${data.participants.length == 1 ? '' : 's'} to continue'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: hasEnoughPlayers ? null : Colors.grey,
+                ),
+                onPressed: hasEnoughPlayers 
+                    ? () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => SessionSummaryScreen(sessionId: sessionId)),
+                        );
+                      }
+                    : null,
+              ),
             ),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => SessionSummaryScreen(sessionId: sessionId)),
-              );
-            },
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -533,7 +543,7 @@ Future<void> _showShareToGroupsDialog(BuildContext context, WidgetRef ref, int s
         context: context,
         builder: (_) => AlertDialog(
           title: const Text('Cannot Share'),
-          content: const Text('Sessions can only be shared after they have been finalized.'),
+          content: const Text('Games can only be shared after they have been finalized.'),
           actions: [
             FilledButton(
               onPressed: () => Navigator.pop(context),
@@ -624,8 +634,8 @@ Future<void> _showShareToGroupsDialog(BuildContext context, WidgetRef ref, int s
                   SnackBar(
                     content: Text(
                       selectedGroupIds.isEmpty
-                          ? 'Session is now private'
-                          : 'Session shared to ${selectedGroupIds.length} group${selectedGroupIds.length == 1 ? '' : 's'}',
+                          ? 'Game is now private'
+                          : 'Game shared to ${selectedGroupIds.length} group${selectedGroupIds.length == 1 ? '' : 's'}',
                     ),
                   ),
                 );

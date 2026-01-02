@@ -199,7 +199,7 @@ class SessionsHomeScreen extends ConsumerWidget {
                   title: Row(
                     children: [
                       Expanded(
-                        child: Text((s.name == null || s.name!.trim().isEmpty) ? 'Session #${s.id ?? '-'}' : s.name!),
+                        child: Text((s.name == null || s.name!.trim().isEmpty) ? 'Game #${s.id ?? '-'}' : s.name!),
                       ),
                       if (!isOwner)
                         Container(
@@ -237,7 +237,7 @@ class SessionsHomeScreen extends ConsumerWidget {
                               await ref.read(analyticsProvider.notifier).refresh();
                               await ref.read(sessionsListProvider.notifier).refresh();
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session deleted')));
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Game deleted')));
                               }
                             }
                           },

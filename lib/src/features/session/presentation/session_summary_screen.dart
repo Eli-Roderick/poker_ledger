@@ -46,7 +46,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
     final asyncState = ref.watch(sessionDetailProvider(widget.sessionId));
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Session Summary'),
+        title: const Text('Cash Outs & Settlement'),
         actions: [
           IconButton(
             tooltip: 'Share summary',
@@ -54,7 +54,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
             onPressed: () async {
               final detail = await ref.read(sessionDetailProvider(widget.sessionId).future);
               final summary = _buildShareText(detail);
-              await SharePlus.instance.share(ShareParams(text: summary, subject: 'Poker Session Summary'));
+              await SharePlus.instance.share(ShareParams(text: summary, subject: 'Poker Game Summary'));
             },
           ),
           IconButton(
@@ -131,10 +131,42 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           final totalCashOuts = participants.fold<int>(0, (sum, p) => sum + (p.cashOutCents ?? 0));
           final delta = totalCashOuts - totalBuyIns; // should be 0 normally (ignoring rake)
 
+          // Calculate progress for step indicator
+          final cashedOutCount = participants.where((p) => p.cashOutCents != null).length;
+          final allCashedOut = participants.isNotEmpty && cashedOutCount == participants.length;
+          
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Text('Cash outs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              // Progress banner
+              if (!data.session.finalized)
+                _ProgressBanner(
+                  cashedOutCount: cashedOutCount,
+                  totalCount: participants.length,
+                  allCashedOut: allCashedOut,
+                ),
+              if (!data.session.finalized) const SizedBox(height: 16),
+              
+              // Header row with labels
+              Row(
+                children: [
+                  const Expanded(
+                    flex: 2,
+                    child: Text('Cash outs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 12),
+                  if (isBanker) ...[
+                    const SizedBox(width: 52),
+                    const SizedBox(width: 8),
+                  ],
+                  const Expanded(
+                    flex: 2,
+                    child: SizedBox(), // Spacer for cash out field
+                  ),
+                  const SizedBox(width: 12),
+                  Text('Buy-in', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                ],
+              ),
               const SizedBox(height: 8),
               ...participants.map((p) {
                 final c = _controllers[p.id]!;
@@ -552,6 +584,78 @@ class _BankerLine {
   final int playerId;
   final int netCents; // positive -> banker pays player, negative -> player pays banker
   const _BankerLine({required this.playerId, required this.netCents});
+}
+
+// Progress banner widget for session summary
+class _ProgressBanner extends StatelessWidget {
+  final int cashedOutCount;
+  final int totalCount;
+  final bool allCashedOut;
+  
+  const _ProgressBanner({
+    required this.cashedOutCount,
+    required this.totalCount,
+    required this.allCashedOut,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    String stepText;
+    String helpText;
+    IconData icon;
+    Color color;
+    
+    if (!allCashedOut) {
+      stepText = 'Step 1: Enter Cash Outs';
+      helpText = cashedOutCount == 0
+          ? 'Enter how much each player cashed out for'
+          : '$cashedOutCount of $totalCount players done';
+      icon = Icons.edit;
+      color = Colors.orange;
+    } else {
+      stepText = 'Step 2: Finalize';
+      helpText = 'All cash outs entered! Tap "Finalize Game" below';
+      icon = Icons.check_circle;
+      color = Colors.green;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stepText,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  helpText,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // Lightweight proxy to pass live-edited participant values into banker settlement computation
