@@ -182,10 +182,11 @@ class SessionRepository {
     
     final sessionGroups = await _client
         .from('session_groups')
-        .select('session_id')
+        .select('session_id, shared_by')
         .eq('group_id', groupId);
     
     final sessionIds = sessionGroups.map((s) => s['session_id'] as int).toList();
+    final sharedByMap = {for (final sg in sessionGroups) sg['session_id'] as int: sg['shared_by'] as String?};
     
     if (sessionIds.isEmpty) return [];
     
@@ -203,14 +204,23 @@ class SessionRepository {
         .toList();
     final ownerNames = await _getOwnerNames(otherOwnerIds);
     
+    // Also get names for users who shared sessions
+    final sharerIds = sharedByMap.values.where((id) => id != null && id != userId).cast<String>().toSet().toList();
+    final sharerNames = await _getOwnerNames(sharerIds);
+    
     final result = <SessionWithOwner>[];
     for (final s in sessions) {
+      final sessionId = s['id'] as int;
       final ownerId = s['user_id'] as String;
       final isOwner = ownerId == userId;
+      final sharedById = sharedByMap[sessionId];
+      
       result.add(SessionWithOwner(
         session: Session.fromMap(s),
         ownerName: isOwner ? 'You' : (ownerNames[ownerId] ?? 'Unknown'),
         isOwner: isOwner,
+        sharedByName: sharedById == null ? null : (sharedById == userId ? 'You' : (sharerNames[sharedById] ?? 'Unknown')),
+        canRemoveFromGroup: isOwner || sharedById == userId,
       ));
     }
     return result;

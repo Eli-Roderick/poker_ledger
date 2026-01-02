@@ -88,6 +88,30 @@ class GroupRepository {
     await _client.from('groups').update({'name': name}).eq('id', groupId);
   }
 
+  /// Get a single group by ID
+  Future<Group?> getGroup(int groupId) async {
+    final data = await _client
+        .from('groups')
+        .select('*, group_members(count)')
+        .eq('id', groupId)
+        .maybeSingle();
+    
+    if (data == null) return null;
+    
+    final memberCount = (data['group_members'] as List?)?.isNotEmpty == true
+        ? (data['group_members'][0]['count'] as int? ?? 0)
+        : 0;
+    
+    return Group(
+      id: data['id'] as int,
+      name: data['name'] as String,
+      ownerId: data['owner_id'] as String,
+      createdAt: DateTime.parse(data['created_at'] as String),
+      isOwner: data['owner_id'] == _currentUserId,
+      memberCount: memberCount + 1, // +1 for owner
+    );
+  }
+
   /// Get group members with profile info
   Future<List<GroupMember>> getGroupMembers(int groupId) async {
     // Get group owner info and members in parallel
@@ -257,7 +281,11 @@ class GroupRepository {
     // Batch insert new groups
     if (toAdd.isNotEmpty) {
       await _client.from('session_groups').insert(
-        toAdd.map((groupId) => {'session_id': sessionId, 'group_id': groupId}).toList(),
+        toAdd.map((groupId) => {
+          'session_id': sessionId, 
+          'group_id': groupId,
+          'shared_by': _currentUserId,
+        }).toList(),
       );
     }
 
@@ -269,5 +297,36 @@ class GroupRepository {
           .eq('session_id', sessionId)
           .inFilter('group_id', toRemove);
     }
+  }
+
+  /// Remove a session from a specific group (only if user is group owner or shared the session)
+  Future<void> removeSessionFromGroup(int sessionId, int groupId) async {
+    // Check if user is group owner
+    final group = await getGroup(groupId);
+    if (group == null) throw Exception('Group not found');
+    
+    bool canRemove = group.isOwner;
+    
+    // If not owner, check if user shared this session to the group
+    if (!canRemove) {
+      final sessionGroup = await _client
+          .from('session_groups')
+          .select('shared_by')
+          .eq('session_id', sessionId)
+          .eq('group_id', groupId)
+          .maybeSingle();
+      
+      canRemove = sessionGroup?['shared_by'] == _currentUserId;
+    }
+    
+    if (!canRemove) {
+      throw Exception('You can only remove sessions you shared or if you are the group owner');
+    }
+    
+    await _client
+        .from('session_groups')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('group_id', groupId);
   }
 }

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:poker_ledger/src/features/groups/data/group_repository.dart';
+import 'package:poker_ledger/src/features/groups/data/group_providers.dart';
 import 'package:poker_ledger/src/features/groups/domain/group_models.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import '../../players/data/players_providers.dart';

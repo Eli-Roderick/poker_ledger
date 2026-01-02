@@ -59,8 +59,10 @@ class SessionKPI {
   final int players;
   final int buyInsCents;
   final int cashOutsCents;
-  final String? ownerName; // For shared sessions - shows who shared it
+  final String? ownerName; // For shared sessions - shows who owns it
   final bool isOwner;
+  final String? sharedByName; // For group sessions - shows who shared it to the group
+  final bool canRemoveFromGroup; // Whether current user can remove this session from the group
   int get netCents => cashOutsCents - buyInsCents;
   const SessionKPI({
     required this.session,
@@ -69,6 +71,8 @@ class SessionKPI {
     required this.cashOutsCents,
     this.ownerName,
     this.isOwner = true,
+    this.sharedByName,
+    this.canRemoveFromGroup = false,
   });
 }
 
@@ -196,6 +200,8 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
         cashOutsCents: cash,
         ownerName: sw.ownerName,
         isOwner: sw.isOwner,
+        sharedByName: sw.sharedByName,
+        canRemoveFromGroup: sw.canRemoveFromGroup,
       ));
     }
 

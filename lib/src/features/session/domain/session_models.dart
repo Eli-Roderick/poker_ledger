@@ -109,10 +109,14 @@ class SessionWithOwner {
   final Session session;
   final String ownerName;
   final bool isOwner;
+  final String? sharedByName; // For group sessions - who shared it to the group
+  final bool canRemoveFromGroup; // Whether current user can remove this session from the group
 
   const SessionWithOwner({
     required this.session,
     required this.ownerName,
     required this.isOwner,
+    this.sharedByName,
+    this.canRemoveFromGroup = false,
   });
 }

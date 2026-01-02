@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../analytics/data/analytics_providers.dart';
 
-import 'package:poker_ledger/src/features/players/data/players_repository.dart';
+import 'package:poker_ledger/src/features/players/data/players_providers.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import 'package:poker_ledger/src/features/players/domain/player.dart';
 

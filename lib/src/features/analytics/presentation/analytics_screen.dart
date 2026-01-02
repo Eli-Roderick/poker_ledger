@@ -10,6 +10,7 @@ import 'package:poker_ledger/src/features/session/domain/session_models.dart';
 import 'package:poker_ledger/src/features/session/presentation/session_summary_screen.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import 'package:poker_ledger/src/features/groups/domain/group_models.dart';
+import 'package:poker_ledger/src/features/groups/data/group_providers.dart';
 
 import '../data/analytics_providers.dart';
 import 'package:poker_ledger/src/features/players/presentation/player_detail_screen.dart';
@@ -213,18 +214,35 @@ class AnalyticsScreen extends ConsumerWidget {
                       ? s.session.name! 
                       : 'Session #${s.session.id ?? '-'}';
                   final isGroupFilter = state.filters.groupId != null;
-                  final subtitle = _formatSessionSubtitle(s.session, s.ownerName, s.isOwner, isGroupFilter);
+                  final subtitle = _formatSessionSubtitle(s.session, s.ownerName, s.isOwner, isGroupFilter, s.sharedByName);
+                  final canRemove = isGroupFilter && s.canRemoveFromGroup;
+                  
                   return ListTile(
                     dense: true,
                     title: Text(sessionName),
                     subtitle: Text(subtitle),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('Players: ${s.players}'),
-                        Text('Net: ${currency.format(s.netCents / 100)}',
-                            style: TextStyle(color: s.netCents == 0 ? Theme.of(context).colorScheme.outline : (s.netCents > 0 ? Colors.green : Colors.red))),
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text('Players: ${s.players}'),
+                            Text('Net: ${currency.format(s.netCents / 100)}',
+                                style: TextStyle(color: s.netCents == 0 ? Theme.of(context).colorScheme.outline : (s.netCents > 0 ? Colors.green : Colors.red))),
+                          ],
+                        ),
+                        if (canRemove) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: () => _showRemoveSessionDialog(context, ref, s.session.id!, state.filters.groupId!),
+                            tooltip: 'Remove from group',
+                            iconSize: 20,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ],
                       ],
                     ),
                     onTap: () {
@@ -246,14 +264,61 @@ class AnalyticsScreen extends ConsumerWidget {
     );
   }
 
-  String _formatSessionSubtitle(Session s, String? ownerName, bool isOwner, bool isGroupFilter) {
+  String _formatSessionSubtitle(Session s, String? ownerName, bool isOwner, bool isGroupFilter, String? sharedByName) {
     final start = DateFormat.yMMMd().add_jm().format(s.startedAt);
     final status = s.finalized ? 'Finalized' : 'In progress';
-    // In group analytics, always show who shared the session (including yourself)
-    if (isGroupFilter && ownerName != null) {
-      return '$start • $status\nShared by $ownerName';
+    // In group analytics, show who owns the session and who shared it
+    if (isGroupFilter) {
+      String result = '$start • $status';
+      if (ownerName != null) {
+        result += '\nOwner: $ownerName';
+      }
+      if (sharedByName != null && sharedByName != ownerName) {
+        result += ' • Shared by $sharedByName';
+      }
+      return result;
     }
     return '$start • $status';
+  }
+
+  Future<void> _showRemoveSessionDialog(BuildContext context, WidgetRef ref, int sessionId, int groupId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Remove session from group?'),
+        content: const Text('This will remove the session from the group. The session itself will not be deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await ref.read(groupRepositoryProvider).removeSessionFromGroup(sessionId, groupId);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session removed from group')),
+          );
+          // Refresh analytics to show updated list
+          ref.read(analyticsProvider.notifier).refresh();
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
   }
 }
 
