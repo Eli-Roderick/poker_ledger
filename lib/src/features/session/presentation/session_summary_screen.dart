@@ -14,7 +14,8 @@ import '../../groups/data/group_providers.dart';
 
 class SessionSummaryScreen extends ConsumerStatefulWidget {
   final int sessionId;
-  const SessionSummaryScreen({super.key, required this.sessionId});
+  final bool showAppBar;
+  const SessionSummaryScreen({super.key, required this.sessionId, this.showAppBar = true});
 
   @override
   ConsumerState<SessionSummaryScreen> createState() => _SessionSummaryScreenState();
@@ -46,8 +47,8 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
   Widget build(BuildContext context) {
     final asyncState = ref.watch(sessionDetailProvider(widget.sessionId));
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cash Outs & Settlement'),
+      appBar: widget.showAppBar ? AppBar(
+        title: const Text('Summary'),
         actions: [
           IconButton(
             tooltip: 'Share summary',
@@ -66,7 +67,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
             },
           ),
         ],
-      ),
+      ) : null,
       body: asyncState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, st) => Center(child: Text('Error: $e')),
