@@ -10,6 +10,7 @@ import 'package:csv/csv.dart';
 
 import '../data/session_detail_providers.dart';
 import '../data/session_providers.dart';
+import '../../groups/data/group_providers.dart';
 
 class SessionSummaryScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -163,8 +164,10 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                     flex: 2,
                     child: SizedBox(), // Spacer for cash out field
                   ),
-                  const SizedBox(width: 12),
-                  Text('Buy-in', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                  if (isBanker) ...[
+                    const SizedBox(width: 12),
+                    Text('Buy-in', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                  ],
                 ],
               ),
               const SizedBox(height: 8),
@@ -238,8 +241,10 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                           },
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Text(_fmtCents(p.buyInCentsTotal), style: const TextStyle(color: Colors.grey)),
+                      if (isBanker) ...[
+                        const SizedBox(width: 12),
+                        Text(_fmtCents(p.buyInCentsTotal), style: const TextStyle(color: Colors.grey)),
+                      ],
                     ],
                   ),
                 );
@@ -373,11 +378,13 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
               ListTile(
                 leading: const Icon(Icons.calculate),
                 title: const Text('Totals'),
-                subtitle: Text('Buy-ins: ${_fmtCents(totalBuyIns)}  •  Cash-outs: ${_fmtCents(totalCashOuts)}'),
-                trailing: Text(
+                subtitle: Text(isBanker 
+                    ? 'Buy-ins: ${_fmtCents(totalBuyIns)}  •  Cash-outs: ${_fmtCents(totalCashOuts)}'
+                    : 'Total cash-outs: ${_fmtCents(totalCashOuts)}'),
+                trailing: isBanker ? Text(
                   _fmtCents(delta),
                   style: TextStyle(color: delta == 0 ? Colors.green : Colors.orange),
-                ),
+                ) : null,
               ),
             ],
           );
@@ -408,33 +415,40 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
   }
 
   Future<void> _finalizeGame(BuildContext context, SessionDetailState data) async {
-    final ok = await showDialog<bool>(
+    final result = await showDialog<_FinalizeResult?>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Finalize game?'),
-        content: const Text('This will lock the game. You can still view and share it afterwards.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.green),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Finalize'),
-          ),
-        ],
-      ),
+      builder: (dialogContext) => _FinalizeDialog(data: data),
     );
-    if (ok == true) {
-      await ref.read(sessionRepositoryProvider).finalizeSession(widget.sessionId);
-      ref.invalidate(sessionDetailProvider(widget.sessionId));
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Game finalized! 🎉'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context); // Go back to game detail
-      }
+    
+    if (result == null) return; // Cancelled
+    
+    // Finalize the game
+    await ref.read(sessionRepositoryProvider).finalizeSession(widget.sessionId);
+    ref.invalidate(sessionDetailProvider(widget.sessionId));
+    
+    // Share to groups if requested
+    if (result.shareToGroups && result.selectedGroupIds.isNotEmpty) {
+      await ref.read(groupRepositoryProvider).updateSessionGroups(
+        widget.sessionId,
+        result.selectedGroupIds,
+      );
+    }
+    
+    // Share settlement summary if requested
+    if (result.shareSummary && context.mounted) {
+      final summary = _buildShareText(data);
+      await SharePlus.instance.share(ShareParams(text: summary, subject: 'Poker Game Summary'));
+    }
+    
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Game finalized! 🎉'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      // Pop back to home
+      Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 
@@ -672,4 +686,177 @@ class _ParticipantProxy {
     required this.cashOutCents,
     required this.paidUpfront,
   });
+}
+
+// Result from finalize dialog
+class _FinalizeResult {
+  final bool shareToGroups;
+  final List<int> selectedGroupIds;
+  final bool shareSummary;
+  
+  const _FinalizeResult({
+    required this.shareToGroups,
+    required this.selectedGroupIds,
+    required this.shareSummary,
+  });
+}
+
+// Finalize dialog with share options
+class _FinalizeDialog extends ConsumerStatefulWidget {
+  final SessionDetailState data;
+  
+  const _FinalizeDialog({required this.data});
+
+  @override
+  ConsumerState<_FinalizeDialog> createState() => _FinalizeDialogState();
+}
+
+class _FinalizeDialogState extends ConsumerState<_FinalizeDialog> {
+  bool _shareToGroups = false;
+  bool _shareSummary = false;
+  final Set<int> _selectedGroupIds = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final groupsAsync = ref.watch(myGroupsProvider);
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.green.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_circle, color: Colors.green, size: 28),
+          ),
+          const SizedBox(width: 12),
+          const Text('Finalize Game'),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This will lock the game and mark it complete.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 24),
+            
+            // Share options header
+            Text(
+              'Share options',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            
+            // Share to groups option
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    title: const Text('Share to groups'),
+                    subtitle: const Text('Let group members see this game'),
+                    value: _shareToGroups,
+                    onChanged: (v) => setState(() => _shareToGroups = v),
+                    secondary: const Icon(Icons.group),
+                  ),
+                  if (_shareToGroups) ...[
+                    const Divider(height: 1),
+                    groupsAsync.when(
+                      loading: () => const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                      error: (e, _) => Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text('Error loading groups: $e'),
+                      ),
+                      data: (groups) {
+                        if (groups.isEmpty) {
+                          return Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              'No groups yet. Create a group first.',
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          );
+                        }
+                        return Column(
+                          children: groups.map((group) => CheckboxListTile(
+                            title: Text(group.name),
+                            subtitle: Text('${group.memberCount} member${group.memberCount == 1 ? '' : 's'}'),
+                            value: _selectedGroupIds.contains(group.id),
+                            onChanged: (checked) {
+                              setState(() {
+                                if (checked == true) {
+                                  _selectedGroupIds.add(group.id);
+                                } else {
+                                  _selectedGroupIds.remove(group.id);
+                                }
+                              });
+                            },
+                            dense: true,
+                          )).toList(),
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            // Share summary option
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SwitchListTile(
+                title: const Text('Share settlement'),
+                subtitle: const Text('Send the settlement summary via text/email'),
+                value: _shareSummary,
+                onChanged: (v) => setState(() => _shareSummary = v),
+                secondary: const Icon(Icons.share),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: Colors.green),
+          onPressed: () {
+            Navigator.pop(
+              context,
+              _FinalizeResult(
+                shareToGroups: _shareToGroups,
+                selectedGroupIds: _selectedGroupIds.toList(),
+                shareSummary: _shareSummary,
+              ),
+            );
+          },
+          icon: const Icon(Icons.check),
+          label: const Text('Finalize'),
+        ),
+      ],
+    );
+  }
 }
