@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../analytics/data/analytics_providers.dart';
 import '../../groups/data/group_providers.dart';
-import '../../players/data/players_providers.dart';
 import '../../players/domain/player.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import '../data/session_detail_providers.dart';

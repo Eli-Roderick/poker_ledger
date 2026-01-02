@@ -8,7 +8,6 @@ import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
 import 'package:poker_ledger/src/features/session/domain/session_models.dart';
 import 'package:poker_ledger/src/features/session/presentation/session_summary_screen.dart';
-import 'package:poker_ledger/src/features/groups/data/group_providers.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import 'package:poker_ledger/src/features/groups/domain/group_models.dart';
 
