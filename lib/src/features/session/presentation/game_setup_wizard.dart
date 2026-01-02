@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../../groups/data/group_providers.dart';
 import '../../players/domain/player.dart';
 import '../data/session_detail_providers.dart';
 import '../data/session_providers.dart';
@@ -230,8 +232,9 @@ class _PlayersPage extends ConsumerWidget {
                               icon: const Icon(Icons.delete_outline, size: 20),
                               tooltip: 'Remove',
                               onPressed: () async {
-                                await ref.read(sessionRepositoryProvider).deleteSessionPlayer(sp.id!);
-                                ref.invalidate(sessionDetailProvider(sessionId));
+                                await ref.read(sessionDetailProvider(sessionId).notifier).deletePlayer(
+                                  sessionPlayerId: sp.id!,
+                                );
                               },
                             ),
                           ],
@@ -275,15 +278,15 @@ class _PlayersPage extends ConsumerWidget {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 16),
-              // Preset buy-in buttons - 3 buttons, evenly spaced, aligned with text fields
+              // Preset buy-in buttons - 3 buttons, evenly spaced
               Row(
                 children: [20, 50, 100].map((amount) => 
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: OutlinedButton(
+                      child: TextButton(
                         onPressed: () => setDialogState(() => buyInController.text = '$amount.00'),
-                        child: Text('\$$amount'),
+                        child: Text('\$$amount', maxLines: 1),
                       ),
                     ),
                   ),
@@ -296,14 +299,11 @@ class _PlayersPage extends ConsumerWidget {
             FilledButton(
               onPressed: selectedPlayer == null ? null : () async {
                 final cents = _parseMoneyToCents(buyInController.text);
-                await ref.read(sessionRepositoryProvider).addPlayerToSession(
-                  sessionId: sessionId,
+                if (ctx.mounted) Navigator.pop(ctx);
+                await ref.read(sessionDetailProvider(sessionId).notifier).addPlayer(
                   playerId: selectedPlayer!.id!,
                   initialBuyInCents: cents,
-                  paidUpfront: false,
                 );
-                ref.invalidate(sessionDetailProvider(sessionId));
-                if (ctx.mounted) Navigator.pop(ctx);
               },
               child: const Text('Add'),
             ),
@@ -331,14 +331,13 @@ class _PlayersPage extends ConsumerWidget {
           FilledButton(
             onPressed: () async {
               final cents = _parseMoneyToCents(controller.text);
+              if (ctx.mounted) Navigator.pop(ctx);
               if (cents > 0) {
-                await ref.read(sessionRepositoryProvider).addRebuy(
+                await ref.read(sessionDetailProvider(sessionId).notifier).addRebuy(
                   sessionPlayerId: sp.id!,
                   amountCents: cents,
                 );
-                ref.invalidate(sessionDetailProvider(sessionId));
               }
-              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Add Rebuy'),
           ),
@@ -452,19 +451,16 @@ class _SettlementModePageState extends ConsumerState<_SettlementModePage> {
               Expanded(
                 child: FilledButton(
                   onPressed: canContinue ? () async {
-                    // Save mode
-                    await ref.read(sessionRepositoryProvider).setSettlementMode(
-                      sessionId: widget.sessionId,
+                    // Save mode with optimistic update
+                    await ref.read(sessionDetailProvider(widget.sessionId).notifier).setSettlementMode(
                       mode: _selectedMode!,
                     );
                     // Set banker if banker mode
                     if (_selectedMode == 'banker' && _selectedBankerSpId != null) {
-                      await ref.read(sessionRepositoryProvider).setBanker(
-                        sessionId: widget.sessionId,
+                      await ref.read(sessionDetailProvider(widget.sessionId).notifier).setBanker(
                         bankerSessionPlayerId: _selectedBankerSpId,
                       );
                     }
-                    ref.invalidate(sessionDetailProvider(widget.sessionId));
                     widget.onContinue();
                   } : null,
                   child: const Text('Next'),
@@ -577,27 +573,164 @@ class _SummaryPageWrapper extends ConsumerWidget {
   }
 
   Future<void> _showFinalizeDialog(BuildContext context, WidgetRef ref, SessionDetailState data) async {
-    final ok = await showDialog<bool>(
+    final result = await showDialog<_FinalizeResult?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Finalize Game'),
-        content: const Text('Are you sure you want to finalize this game? This cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Finalize')),
-        ],
-      ),
+      builder: (ctx) => _WizardFinalizeDialog(data: data),
     );
     
-    if (ok == true) {
-      await ref.read(sessionRepositoryProvider).finalizeSession(sessionId);
-      ref.invalidate(sessionDetailProvider(sessionId));
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Game finalized')),
-        );
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
+    if (result == null) return;
+    
+    // Finalize the game
+    await ref.read(sessionRepositoryProvider).finalizeSession(sessionId);
+    ref.invalidate(sessionDetailProvider(sessionId));
+    
+    // Share to groups if requested
+    if (result.shareToGroups && result.selectedGroupIds.isNotEmpty) {
+      await ref.read(groupRepositoryProvider).updateSessionGroups(
+        sessionId,
+        result.selectedGroupIds.toList(),
+      );
     }
+    
+    // Share settlement summary if requested
+    if (result.shareSummary && context.mounted) {
+      final summary = _buildShareText(data);
+      await SharePlus.instance.share(ShareParams(text: summary, subject: 'Poker Game Summary'));
+    }
+    
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Game finalized')),
+      );
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
+  
+  String _buildShareText(SessionDetailState detail) {
+    final buf = StringBuffer();
+    final fmt = NumberFormat.simpleCurrency();
+    buf.writeln('Poker Game Summary');
+    final isBanker = detail.session.settlementMode == 'banker' && detail.session.bankerSessionPlayerId != null;
+    String bankerName = '';
+    if (isBanker) {
+      final bankerSp = detail.participants.firstWhere((sp) => sp.id == detail.session.bankerSessionPlayerId);
+      bankerName = detail.allPlayers.firstWhere((p) => p.id == bankerSp.playerId).name;
+    }
+    buf.writeln('Mode: ${detail.session.settlementMode}${isBanker ? ' (Banker: $bankerName)' : ''}');
+    buf.writeln('');
+    buf.writeln('Players:');
+    for (final p in detail.participants) {
+      final name = detail.allPlayers.firstWhere((e) => e.id == p.playerId).name;
+      final buy = fmt.format(p.buyInCentsTotal / 100);
+      final cash = fmt.format((p.cashOutCents ?? 0) / 100);
+      buf.writeln('- $name: buy-ins $buy, cash-out $cash');
+    }
+    return buf.toString();
+  }
+}
+
+class _FinalizeResult {
+  final bool shareToGroups;
+  final Set<int> selectedGroupIds;
+  final bool shareSummary;
+  const _FinalizeResult({
+    required this.shareToGroups,
+    required this.selectedGroupIds,
+    required this.shareSummary,
+  });
+}
+
+class _WizardFinalizeDialog extends ConsumerStatefulWidget {
+  final SessionDetailState data;
+  const _WizardFinalizeDialog({required this.data});
+
+  @override
+  ConsumerState<_WizardFinalizeDialog> createState() => _WizardFinalizeDialogState();
+}
+
+class _WizardFinalizeDialogState extends ConsumerState<_WizardFinalizeDialog> {
+  bool _shareToGroups = false;
+  bool _shareSummary = false;
+  final Set<int> _selectedGroupIds = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final groupsAsync = ref.watch(myGroupsProvider);
+
+    return AlertDialog(
+      title: const Text('Finalize Game'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('This will lock the game and mark it complete.'),
+            const SizedBox(height: 16),
+            
+            // Share summary option
+            SwitchListTile(
+              title: const Text('Share settlement'),
+              subtitle: const Text('Share as text message'),
+              value: _shareSummary,
+              onChanged: (v) => setState(() => _shareSummary = v),
+              contentPadding: EdgeInsets.zero,
+            ),
+            
+            const Divider(),
+            
+            // Share to groups option
+            SwitchListTile(
+              title: const Text('Share to groups'),
+              subtitle: const Text('Let group members see this game'),
+              value: _shareToGroups,
+              onChanged: (v) => setState(() => _shareToGroups = v),
+              contentPadding: EdgeInsets.zero,
+            ),
+            
+            if (_shareToGroups) ...[
+              const SizedBox(height: 8),
+              groupsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Text('Error loading groups: $e'),
+                data: (groups) {
+                  if (groups.isEmpty) {
+                    return const Text('No groups available');
+                  }
+                  return Column(
+                    children: groups.map((g) => CheckboxListTile(
+                      title: Text(g.name),
+                      value: _selectedGroupIds.contains(g.id),
+                      onChanged: (v) => setState(() {
+                        if (v == true) {
+                          _selectedGroupIds.add(g.id);
+                        } else {
+                          _selectedGroupIds.remove(g.id);
+                        }
+                      }),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    )).toList(),
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _FinalizeResult(
+            shareToGroups: _shareToGroups,
+            selectedGroupIds: _selectedGroupIds,
+            shareSummary: _shareSummary,
+          )),
+          child: const Text('Finalize'),
+        ),
+      ],
+    );
   }
 }

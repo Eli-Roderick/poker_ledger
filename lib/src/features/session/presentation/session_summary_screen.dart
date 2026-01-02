@@ -170,15 +170,21 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           onChanged: (raw) {
                             _saveDebouncers[p.id!]?.cancel();
-                            _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
+                            _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 400), () {
                               final text = raw.trim();
                               final cents = _parseMoneyToCents(text);
-                              await ref.read(sessionRepositoryProvider).updateCashOut(
-                                    sessionPlayerId: p.id!,
-                                    cashOutCents: text.isEmpty ? null : cents,
-                                  );
-                              ref.invalidate(sessionDetailProvider(widget.sessionId));
+                              ref.read(sessionDetailProvider(widget.sessionId).notifier).updateCashOut(
+                                sessionPlayerId: p.id!,
+                                cashOutCents: text.isEmpty ? null : cents,
+                              );
                             });
+                          },
+                          onEditingComplete: () {
+                            // Format with decimals when done editing
+                            final text = c.text.trim();
+                            if (text.isNotEmpty && !text.contains('.')) {
+                              c.text = '$text.00';
+                            }
                           },
                         ),
                       ),
