@@ -148,111 +148,137 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                 ),
               if (!data.session.finalized) const SizedBox(height: 16),
               
-              // Header row with labels
+              // Section header
               Row(
                 children: [
-                  const Expanded(
-                    flex: 2,
-                    child: Text('Cash outs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                  ),
-                  const SizedBox(width: 12),
-                  if (isBanker) ...[
-                    const SizedBox(width: 52),
-                    const SizedBox(width: 8),
-                  ],
-                  const Expanded(
-                    flex: 2,
-                    child: SizedBox(), // Spacer for cash out field
-                  ),
-                  if (isBanker) ...[
-                    const SizedBox(width: 12),
-                    Text('Buy-in', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-                  ],
+                  Icon(Icons.attach_money, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text('Cash outs', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  if (isBanker)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text('Banker Mode', style: TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.w500)),
+                    ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ...participants.map((p) {
                 final c = _controllers[p.id]!;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6.0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          // Find player name from detail provider data
-                          data.allPlayers.firstWhere((e) => e.id == p.playerId).name,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      if (isBanker && p.id != bankerSpId) ...[
-                        // Upfront toggle to the LEFT of cash-out field
-                        SizedBox(
-                          width: 52,
-                          child: Tooltip(
-                            message: 'Paid banker upfront',
-                            child: Switch(
-                              value: p.paidUpfront,
-                              onChanged: (v) async {
-                                await ref.read(sessionRepositoryProvider).updatePaidUpfront(sessionPlayerId: p.id!, paidUpfront: v);
-                                ref.invalidate(sessionDetailProvider(widget.sessionId));
-                              },
+                final playerName = data.allPlayers.firstWhere((e) => e.id == p.playerId).name;
+                final isBankerPlayer = isBanker && p.id == bankerSpId;
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        // Player avatar
+                        CircleAvatar(
+                          radius: 18,
+                          backgroundColor: isBankerPlayer 
+                              ? Colors.green 
+                              : Theme.of(context).colorScheme.primaryContainer,
+                          child: Text(
+                            playerName[0].toUpperCase(),
+                            style: TextStyle(
+                              color: isBankerPlayer 
+                                  ? Colors.white 
+                                  : Theme.of(context).colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                      ]
-                      else if (isBanker && p.id == bankerSpId) ...[
-                        // Placeholder to keep cash-out width equal to rows with toggle
-                        const SizedBox(width: 52),
-                        const SizedBox(width: 8),
-                      ],
-                      Expanded(
-                        flex: 2,
-                        child: TextField(
-                          controller: c,
-                          decoration: const InputDecoration(labelText: 'Cash out'),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          onChanged: (raw) {
-                            // Debounced auto-save while typing
-                            _saveDebouncers[p.id!]?.cancel();
-                            _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
-                              final text = raw.trim();
-                              final cents = _parseMoneyToCents(text);
-                              await ref.read(sessionRepositoryProvider).updateCashOut(
-                                    sessionPlayerId: p.id!,
-                                    cashOutCents: text.isEmpty ? null : cents,
-                                  );
-                              // Keep detail fresh
-                              ref.invalidate(sessionDetailProvider(widget.sessionId));
-                            });
-                          },
-                          onSubmitted: (raw) async {
-                            final cents = _parseMoneyToCents(raw.trim());
-                            await ref.read(sessionRepositoryProvider).updateCashOut(
-                                  sessionPlayerId: p.id!,
-                                  cashOutCents: raw.trim().isEmpty ? null : cents,
-                                );
-                            ref.invalidate(sessionDetailProvider(widget.sessionId));
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cash out saved')));
-                            }
-                          },
-                        ),
-                      ),
-                      if (isBanker) ...[
                         const SizedBox(width: 12),
-                        Text(_fmtCents(p.buyInCentsTotal), style: const TextStyle(color: Colors.grey)),
+                        // Player name and buy-in
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(playerName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                                  if (isBankerPlayer) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text('Banker', style: TextStyle(fontSize: 10, color: Colors.white)),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (isBanker)
+                                Text('Buy-in: ${_fmtCents(p.buyInCentsTotal)}', 
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                            ],
+                          ),
+                        ),
+                        // Paid upfront toggle (banker mode only, non-banker players)
+                        if (isBanker && !isBankerPlayer) ...[
+                          Column(
+                            children: [
+                              Switch(
+                                value: p.paidUpfront,
+                                onChanged: (v) async {
+                                  await ref.read(sessionRepositoryProvider).updatePaidUpfront(sessionPlayerId: p.id!, paidUpfront: v);
+                                  ref.invalidate(sessionDetailProvider(widget.sessionId));
+                                },
+                              ),
+                              Text('Paid', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                            ],
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        // Cash out field
+                        SizedBox(
+                          width: 100,
+                          child: TextField(
+                            controller: c,
+                            decoration: InputDecoration(
+                              labelText: 'Cash out',
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              filled: true,
+                              fillColor: p.cashOutCents != null 
+                                  ? Colors.green.withValues(alpha: 0.1) 
+                                  : null,
+                            ),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            textAlign: TextAlign.center,
+                            onChanged: (raw) {
+                              _saveDebouncers[p.id!]?.cancel();
+                              _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
+                                final text = raw.trim();
+                                final cents = _parseMoneyToCents(text);
+                                await ref.read(sessionRepositoryProvider).updateCashOut(
+                                      sessionPlayerId: p.id!,
+                                      cashOutCents: text.isEmpty ? null : cents,
+                                    );
+                                ref.invalidate(sessionDetailProvider(widget.sessionId));
+                              });
+                            },
+                          ),
+                        ),
                       ],
-                    ],
+                    ),
                   ),
                 );
               }),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               const Divider(height: 24),
               Row(
                 children: [
+                  Icon(Icons.swap_horiz, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
                   const Text('Settlement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                   const Spacer(),
                   if (isBanker) ...[
