@@ -92,6 +92,7 @@ class _PlayersListScreenState extends ConsumerState<PlayersListScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
+        tooltip: 'Add a player to your roster',
         onPressed: () async {
           final created = await showModalBottomSheet<_CreatePlayerResult?>(
             context: context,
@@ -660,11 +661,26 @@ class ListEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      children: const [
-        SizedBox(height: 120),
-        Icon(Icons.people_outline, size: 72, color: Colors.white70),
-        SizedBox(height: 12),
-        Center(child: Text('No players yet. Tap "+ Add Player" to add one.')),
+      children: [
+        const SizedBox(height: 80),
+        Icon(Icons.people_outline, size: 72, color: Colors.grey.shade400),
+        const SizedBox(height: 16),
+        Text(
+          'No players yet',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text(
+            'Players are people who participate in your poker sessions. Tap "Add Player" to search for users by their email or name.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ),
       ],
     );
   }

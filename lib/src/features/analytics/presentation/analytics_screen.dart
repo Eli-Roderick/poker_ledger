@@ -114,6 +114,34 @@ class AnalyticsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, st) => Center(child: Text('Error: $e')),
         data: (state) {
+          if (state.totalSessions == 0) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.analytics_outlined, size: 64, color: Colors.grey.shade400),
+                    const SizedBox(height: 16),
+                    Text(
+                      isGroupFilter ? 'No shared sessions yet' : 'No analytics data yet',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      isGroupFilter
+                          ? 'Sessions shared to this group will appear here. Share a session from its detail page.'
+                          : 'Complete and finalize poker sessions to see your statistics here. Analytics show your net profit/loss, session history, and player performance.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
           return CustomScrollView(
             slivers: [
               // Filters moved to AppBar bottom sheet

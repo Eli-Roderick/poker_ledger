@@ -38,7 +38,7 @@ class GroupsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Create a group to share sessions with friends',
+                      'Groups let you share poker sessions with friends. Create a group, invite members, then share sessions to see combined analytics.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Colors.grey,
                           ),
@@ -61,6 +61,7 @@ class GroupsScreen extends ConsumerWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
+        tooltip: 'Create a new group to share sessions',
         onPressed: () => _showCreateGroupDialog(context, ref),
         icon: const Icon(Icons.add),
         label: const Text('Create Group'),
@@ -75,14 +76,25 @@ class GroupsScreen extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Create Group'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Group Name',
-            hintText: 'e.g., College Friends',
-          ),
-          textCapitalization: TextCapitalization.words,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+                hintText: 'e.g., College Friends',
+              ),
+              textCapitalization: TextCapitalization.words,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'After creating, you can invite members by searching for their account.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+            ),
+          ],
         ),
         actions: [
           TextButton(

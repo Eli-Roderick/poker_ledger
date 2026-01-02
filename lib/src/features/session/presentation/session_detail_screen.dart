@@ -183,9 +183,22 @@ class SessionDetailScreen extends ConsumerWidget {
                   ],
                 ),
                 if (participants.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 32.0),
-                    child: Center(child: Text('No participants yet. Add players below.')),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32.0),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(Icons.group_add, size: 48, color: Colors.grey.shade400),
+                          const SizedBox(height: 12),
+                          const Text('No participants yet'),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tap "Add player" to add participants to this session',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
                   )
                 else
                   ...participants.map((sp) {
@@ -201,8 +214,8 @@ class SessionDetailScreen extends ConsumerWidget {
                     child: Column(
                       children: [
                         RadioListTile<String>(
-                          title: const Text('Pairwise (default)'),
-                          subtitle: const Text('Everyone settles with each other via minimal transfers'),
+                          title: const Text('Pairwise'),
+                          subtitle: const Text('Players settle directly with each other using the minimum number of transfers'),
                           value: 'pairwise',
                           groupValue: data.session.settlementMode,
                           onChanged: (v) async {

@@ -97,10 +97,35 @@ class SessionsHomeScreen extends ConsumerWidget {
 
           if (filtered.isEmpty) {
             return Center(
-              child: Text(
-                hasActiveFilter
-                    ? 'No sessions match your filters.'
-                    : 'No sessions yet. Tap + to start a new session.',
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      hasActiveFilter ? Icons.filter_alt_off : Icons.casino_outlined,
+                      size: 64,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      hasActiveFilter
+                          ? 'No sessions match your filters'
+                          : 'No sessions yet',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      hasActiveFilter
+                          ? 'Try adjusting your date range or status filter'
+                          : 'Tap "New Session" to start tracking a poker game. Add players, record buy-ins and cash-outs, then settle up at the end.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -138,6 +163,7 @@ class SessionsHomeScreen extends ConsumerWidget {
                   subtitle: Text('$started • $status'),
                   trailing: isOwner
                       ? IconButton(
+                          tooltip: 'Delete session',
                           icon: const Icon(Icons.delete_outline),
                           onPressed: () async {
                             final ok = await showDialog<bool>(
@@ -195,6 +221,7 @@ class SessionsHomeScreen extends ConsumerWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
+        tooltip: 'Start a new poker session',
         onPressed: () async {
           // Prompt for an optional name
           final controller = TextEditingController();
@@ -202,9 +229,23 @@ class SessionsHomeScreen extends ConsumerWidget {
             context: context,
             builder: (_) => AlertDialog(
               title: const Text('New session'),
-              content: TextField(
-                controller: controller,
-                decoration: const InputDecoration(labelText: 'Name (optional)'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: controller,
+                    decoration: const InputDecoration(
+                      labelText: 'Name (optional)',
+                      hintText: 'e.g., Friday Night Game',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'You can add players and set buy-ins after creating the session.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                  ),
+                ],
               ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
