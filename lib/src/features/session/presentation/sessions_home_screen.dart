@@ -233,7 +233,7 @@ class SessionsHomeScreen extends ConsumerWidget {
           final controller = TextEditingController();
           final name = await showDialog<String?>(
             context: context,
-            builder: (_) => AlertDialog(
+            builder: (dialogContext) => AlertDialog(
               title: const Text('New session'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -249,13 +249,13 @@ class SessionsHomeScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                   Text(
                     'You can add players and set buy-ins after creating the session.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(color: Colors.grey),
                   ),
                 ],
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Create')),
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+                FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Create')),
               ],
             ),
           );
