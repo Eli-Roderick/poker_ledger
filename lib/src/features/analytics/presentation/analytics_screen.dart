@@ -28,6 +28,8 @@ class AnalyticsScreen extends ConsumerWidget {
     final groupLabel = currentFilters?.groupName ?? 'My Sessions';
     final isGroupFilter = currentFilters?.groupId != null;
     
+    final groupsAsync = ref.watch(myGroupsProvider);
+    
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -35,27 +37,30 @@ class AnalyticsScreen extends ConsumerWidget {
           onPressed: () => context.showHelp(HelpPage.analytics),
           tooltip: 'Help',
         ),
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isGroupFilter ? Icons.group : Icons.person,
-              size: 18,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              groupLabel,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w500,
+        title: GestureDetector(
+          onTap: () => _showGroupFilterSheet(context, ref, groupsAsync, currentFilters),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isGroupFilter ? Icons.group : Icons.person,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.arrow_drop_down,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ],
+              const SizedBox(width: 8),
+              Text(
+                groupLabel,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.arrow_drop_down,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
         ),
         actions: [
           IconButton(

@@ -116,34 +116,6 @@ class SessionDetailScreen extends ConsumerWidget {
             icon: const Icon(Icons.group_add),
             onPressed: () => _showShareToGroupsDialog(context, ref, sessionId),
           ),
-          IconButton(
-            tooltip: 'Delete session',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (_) => AlertDialog(
-                  title: const Text('Delete session?'),
-                  content: const Text('This will remove the session and all of its data.'),
-                  actions: [
-                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                    FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-                  ],
-                ),
-              );
-              if (ok == true) {
-                await ref.read(sessionRepositoryProvider).deleteSession(sessionId);
-                // Update analytics promptly after deletion
-                await ref.read(analyticsProvider.notifier).refresh();
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Session deleted')));
-                }
-                // refresh sessions list
-                ref.read(sessionsListProvider.notifier).refresh();
-              }
-            },
-          ),
         ],
       ),
       body: asyncState.when(
