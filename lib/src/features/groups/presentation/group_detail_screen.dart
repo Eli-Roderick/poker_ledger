@@ -32,12 +32,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_group.name),
-        leading: IconButton(
-          icon: const Icon(Icons.help_outline),
-          onPressed: () => context.showHelp(HelpPage.groupDetail),
-          tooltip: 'Help',
-        ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => context.showHelp(HelpPage.groupDetail),
+            tooltip: 'Help',
+          ),
           if (_group.isOwner)
             PopupMenuButton<String>(
               onSelected: (value) => _handleMenuAction(value),

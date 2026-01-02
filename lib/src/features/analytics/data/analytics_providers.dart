@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../session/data/session_repository.dart';
 import '../../session/domain/session_models.dart';
+import '../../groups/data/group_providers.dart';
 
 class AnalyticsFilters {
   final DateTime? start;
@@ -118,8 +119,13 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
     
     // Get sessions based on group filter
     List<SessionWithOwner> sessionsWithOwner;
+    bool isGroupOwner = false;
     if (_filters.groupId != null) {
       sessionsWithOwner = await repo.listSessionsInGroup(_filters.groupId!);
+      // Check if current user is the group owner
+      final groupRepo = ref.read(groupRepositoryProvider);
+      final group = await groupRepo.getGroup(_filters.groupId!);
+      isGroupOwner = group?.isOwner ?? false;
     } else {
       final mySessions = await repo.listMySessions();
       sessionsWithOwner = mySessions.map((s) => SessionWithOwner(
@@ -201,7 +207,7 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
         ownerName: sw.ownerName,
         isOwner: sw.isOwner,
         sharedByName: sw.sharedByName,
-        canRemoveFromGroup: sw.canRemoveFromGroup,
+        canRemoveFromGroup: isGroupOwner || sw.canRemoveFromGroup,
       ));
     }
 

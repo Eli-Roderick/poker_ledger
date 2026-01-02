@@ -21,13 +21,13 @@ class SessionDetailScreen extends ConsumerWidget {
     final sessionName = asyncState.valueOrNull?.session.name;
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.help_outline),
-          onPressed: () => context.showHelp(HelpPage.sessionDetail),
-          tooltip: 'Help',
-        ),
         title: Text((sessionName == null || sessionName.trim().isEmpty) ? 'Session #$sessionId' : sessionName),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => context.showHelp(HelpPage.sessionDetail),
+            tooltip: 'Help',
+          ),
           IconButton(
             tooltip: 'Finalize session',
             icon: const Icon(Icons.check_circle_outline),
