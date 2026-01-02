@@ -50,7 +50,7 @@ class SessionsHomeScreen extends ConsumerWidget {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Sessions'),
+        title: const Text('My Games'),
         leading: IconButton(
           icon: const Icon(Icons.help_outline),
           onPressed: () => context.showHelp(HelpPage.sessions),
@@ -116,20 +116,69 @@ class SessionsHomeScreen extends ConsumerWidget {
                     const SizedBox(height: 16),
                     Text(
                       hasActiveFilter
-                          ? 'No sessions match your filters'
-                          : 'No sessions yet',
-                      style: Theme.of(context).textTheme.titleMedium,
+                          ? 'No games match your filters'
+                          : 'Ready to play?',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       hasActiveFilter
                           ? 'Try adjusting your date range or status filter'
-                          : 'Tap "New Session" to start tracking a poker game. Add players, record buy-ins and cash-outs, then settle up at the end.',
+                          : 'Start a new game to track buy-ins, cash-outs, and who owes who at the end.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.grey.shade600,
                       ),
                     ),
+                    if (!hasActiveFilter) ...[
+                      const SizedBox(height: 24),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          final controller = TextEditingController();
+                          final name = await showDialog<String?>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              title: const Text('New game'),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  TextField(
+                                    controller: controller,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Name (optional)',
+                                      hintText: 'e.g., Friday Night Game',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'You can add players and set buy-ins after creating the game.',
+                                    style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+                                FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()), child: const Text('Create')),
+                              ],
+                            ),
+                          );
+                          if (name == null) return;
+                          if (!context.mounted) return;
+                          final newSession = await ref.read(sessionRepositoryProvider).createSession(name: name.isEmpty ? null : name);
+                          if (context.mounted) {
+                            ref.read(sessionsListProvider.notifier).refresh();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => SessionDetailScreen(sessionId: newSession.id!)),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Start New Game'),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -234,7 +283,7 @@ class SessionsHomeScreen extends ConsumerWidget {
           final name = await showDialog<String?>(
             context: context,
             builder: (dialogContext) => AlertDialog(
-              title: const Text('New session'),
+              title: const Text('New game'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,7 +297,7 @@ class SessionsHomeScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'You can add players and set buy-ins after creating the session.',
+                    'You can add players and set buy-ins after creating the game.',
                     style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(color: Colors.grey),
                   ),
                 ],
@@ -272,7 +321,7 @@ class SessionsHomeScreen extends ConsumerWidget {
           }
         },
         icon: const Icon(Icons.add),
-        label: const Text('New Session'),
+        label: const Text('New Game'),
       ),
     );
   }

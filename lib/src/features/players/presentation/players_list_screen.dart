@@ -22,6 +22,7 @@ class _PlayersListScreenState extends ConsumerState<PlayersListScreen> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchCtrl.clear(); // Clear search when leaving page
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -113,6 +114,9 @@ class _PlayersListScreenState extends ConsumerState<PlayersListScreen> {
                   phone: created.phone?.trim(),
                   linkedUserId: created.linkedUserId,
                 );
+            // Clear search after adding a player
+            _searchCtrl.clear();
+            if (mounted) setState(() {});
           }
         },
         icon: const Icon(Icons.person_add),
@@ -670,15 +674,17 @@ class ListEmptyState extends StatelessWidget {
         Icon(Icons.people_outline, size: 72, color: Colors.grey.shade400),
         const SizedBox(height: 16),
         Text(
-          'No players yet',
+          'Add your poker buddies',
           textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleMedium,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Text(
-            'Players are people who participate in your poker sessions. Tap "Add Player" to search for users by their email or name.',
+            'Search for friends by email to link their accounts. Their stats will sync across all your games together.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Colors.grey.shade600,

@@ -347,7 +347,8 @@ class SessionRepository {
     final data = await _client
         .from('session_players')
         .select('id, session_id, player_id, buy_in_cents_total, cash_out_cents, paid_upfront, settlement_done, players(name, email, active)')
-        .eq('session_id', sessionId);
+        .eq('session_id', sessionId)
+        .order('id', ascending: true);
     
     // Transform the nested player data to flat structure
     return (data as List).map((row) {

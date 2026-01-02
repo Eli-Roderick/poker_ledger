@@ -21,7 +21,7 @@ class SessionDetailScreen extends ConsumerWidget {
     final sessionName = asyncState.valueOrNull?.session.name;
     return Scaffold(
       appBar: AppBar(
-        title: Text((sessionName == null || sessionName.trim().isEmpty) ? 'Session #$sessionId' : sessionName),
+        title: Text((sessionName == null || sessionName.trim().isEmpty) ? 'Game #$sessionId' : sessionName),
         actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
@@ -29,7 +29,7 @@ class SessionDetailScreen extends ConsumerWidget {
             tooltip: 'Help',
           ),
           IconButton(
-            tooltip: 'Finalize session',
+            tooltip: 'Finalize game',
             icon: const Icon(Icons.check_circle_outline),
             onPressed: () async {
               // Validation: require all cash outs entered
@@ -91,8 +91,8 @@ class SessionDetailScreen extends ConsumerWidget {
               final ok = await showDialog<bool>(
                 context: context,
                 builder: (_) => AlertDialog(
-                  title: const Text('Finalize session?'),
-                  content: const Text('This locks the session timing and marks it complete.'),
+                  title: const Text('Finalize game?'),
+                  content: const Text('This locks the game and marks it complete.'),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
                     FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Finalize')),
