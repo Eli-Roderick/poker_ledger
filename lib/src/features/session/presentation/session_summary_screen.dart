@@ -136,7 +136,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Simple player rows with cash out fields (like players page)
+              // Player rows with cash out fields (using ListTile like players page)
               ...participants.asMap().entries.map((entry) {
                 final index = entry.key;
                 final p = entry.value;
@@ -145,56 +145,39 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                 final isBankerPlayer = isBanker && p.id == bankerSpId;
                 return Column(
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          // Player name and buy-in
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(isBankerPlayer ? '$playerName (Banker)' : playerName),
-                                Text('Buy-Ins Total: ${_fmtCents(p.buyInCentsTotal)}', 
-                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                              ],
-                            ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(isBankerPlayer ? '$playerName (Banker)' : playerName),
+                      subtitle: Text('Buy-Ins Total: ${_fmtCents(p.buyInCentsTotal)}'),
+                      trailing: SizedBox(
+                        width: 100,
+                        child: TextField(
+                          controller: c,
+                          decoration: InputDecoration(
+                            labelText: 'Cash out',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            filled: true,
+                            fillColor: p.cashOutCents != null 
+                                ? Colors.green.withValues(alpha: 0.1) 
+                                : null,
                           ),
-                          // Cash out field
-                          SizedBox(
-                            width: 80,
-                            child: TextField(
-                              controller: c,
-                              decoration: const InputDecoration(
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                                border: OutlineInputBorder(),
-                              ),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              textAlign: TextAlign.center,
-                              onChanged: (raw) {
-                                _saveDebouncers[p.id!]?.cancel();
-                                _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
-                                  final text = raw.trim();
-                                  final cents = _parseMoneyToCents(text);
-                                  await ref.read(sessionRepositoryProvider).updateCashOut(
-                                        sessionPlayerId: p.id!,
-                                        cashOutCents: text.isEmpty ? null : cents,
-                                      );
-                                  ref.invalidate(sessionDetailProvider(widget.sessionId));
-                                });
-                              },
-                            ),
-                          ),
-                          // Buy-in total to the right of cash out
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 70,
-                            child: Text(_fmtCents(p.buyInCentsTotal), 
-                                textAlign: TextAlign.right,
-                                style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
-                          ),
-                        ],
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          textAlign: TextAlign.center,
+                          onChanged: (raw) {
+                            _saveDebouncers[p.id!]?.cancel();
+                            _saveDebouncers[p.id!] = Timer(const Duration(milliseconds: 600), () async {
+                              final text = raw.trim();
+                              final cents = _parseMoneyToCents(text);
+                              await ref.read(sessionRepositoryProvider).updateCashOut(
+                                    sessionPlayerId: p.id!,
+                                    cashOutCents: text.isEmpty ? null : cents,
+                                  );
+                              ref.invalidate(sessionDetailProvider(widget.sessionId));
+                            });
+                          },
+                        ),
                       ),
                     ),
                     if (index < participants.length - 1) const Divider(height: 1),
@@ -344,7 +327,8 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           );
         },
       ),
-      bottomNavigationBar: asyncState.whenOrNull(
+      // Bottom nav bar only shown when used standalone (not in wizard)
+      bottomNavigationBar: widget.showAppBar ? asyncState.whenOrNull(
         data: (data) {
           if (data.session.finalized) return null;
           final allCashedOut = data.participants.isNotEmpty && 
@@ -364,7 +348,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
             ),
           );
         },
-      ),
+      ) : null,
     );
   }
 
