@@ -351,7 +351,59 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           );
         },
       ),
+      bottomNavigationBar: asyncState.whenOrNull(
+        data: (data) {
+          if (data.session.finalized) return null;
+          final allCashedOut = data.participants.isNotEmpty && 
+              data.participants.every((p) => p.cashOutCents != null);
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: FilledButton.icon(
+                icon: Icon(allCashedOut ? Icons.check_circle : Icons.edit),
+                label: Text(allCashedOut ? 'Finalize Game' : 'Enter all cash outs to finalize'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: allCashedOut ? Colors.green : Colors.grey,
+                ),
+                onPressed: allCashedOut ? () => _finalizeGame(context, data) : null,
+              ),
+            ),
+          );
+        },
+      ),
     );
+  }
+
+  Future<void> _finalizeGame(BuildContext context, SessionDetailState data) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Finalize game?'),
+        content: const Text('This will lock the game. You can still view and share it afterwards.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.green),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Finalize'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(sessionRepositoryProvider).finalizeSession(widget.sessionId);
+      ref.invalidate(sessionDetailProvider(widget.sessionId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Game finalized! 🎉'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context); // Go back to game detail
+      }
+    }
   }
 
   int _parseMoneyToCents(String input) {

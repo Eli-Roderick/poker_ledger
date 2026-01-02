@@ -124,14 +124,31 @@ class SessionDetailScreen extends ConsumerWidget {
         data: (data) {
           final participants = data.participants;
           final allPlayers = data.allPlayers;
+          final session = data.session;
+          
+          // Calculate progress
+          final hasEnoughPlayers = participants.length >= 2;
+          final cashedOutCount = participants.where((p) => p.cashOutCents != null).length;
+          final allCashedOut = participants.isNotEmpty && cashedOutCount == participants.length;
+          
           return RefreshIndicator(
             onRefresh: () async => ref.invalidate(sessionDetailProvider(sessionId)),
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                // Progress banner
+                if (!session.finalized)
+                  _ProgressBanner(
+                    hasEnoughPlayers: hasEnoughPlayers,
+                    participantCount: participants.length,
+                    cashedOutCount: cashedOutCount,
+                    allCashedOut: allCashedOut,
+                  ),
+                if (!session.finalized) const SizedBox(height: 16),
+                
                 Row(
                   children: [
-                    Expanded(child: _SectionHeader(title: 'Participants (${participants.length})')),
+                    Expanded(child: _SectionHeader(title: 'Players (${participants.length})')),
                     TextButton.icon(
                       icon: const Icon(Icons.person_add),
                       label: const Text('Add player'),
@@ -165,12 +182,15 @@ class SessionDetailScreen extends ConsumerWidget {
                     child: Center(
                       child: Column(
                         children: [
-                          Icon(Icons.group_add, size: 48, color: Colors.grey.shade400),
+                          Icon(Icons.people_outline, size: 48, color: Colors.grey.shade400),
                           const SizedBox(height: 12),
-                          const Text('No participants yet'),
+                          Text(
+                            'Who\'s playing?',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          ),
                           const SizedBox(height: 4),
                           Text(
-                            'Tap "Add player" to add participants to this session',
+                            'Tap "Add player" above to add people to this game',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
                           ),
                         ],
@@ -259,8 +279,11 @@ class SessionDetailScreen extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: FilledButton.icon(
-            icon: const Icon(Icons.summarize_outlined),
-            label: const Text('Session Summary'),
+            icon: const Icon(Icons.attach_money),
+            label: const Text('Cash Outs & Settlement'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => SessionSummaryScreen(sessionId: sessionId)),
@@ -615,4 +638,86 @@ Future<void> _showShareToGroupsDialog(BuildContext context, WidgetRef ref, int s
       ),
     ),
   );
+}
+
+// Progress banner widget showing current step
+class _ProgressBanner extends StatelessWidget {
+  final bool hasEnoughPlayers;
+  final int participantCount;
+  final int cashedOutCount;
+  final bool allCashedOut;
+  
+  const _ProgressBanner({
+    required this.hasEnoughPlayers,
+    required this.participantCount,
+    required this.cashedOutCount,
+    required this.allCashedOut,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    // Determine current step and message
+    String stepText;
+    String helpText;
+    IconData icon;
+    Color color;
+    
+    if (!hasEnoughPlayers) {
+      stepText = 'Step 1: Add Players';
+      helpText = participantCount == 0 
+          ? 'Add at least 2 players to start the game'
+          : 'Add ${2 - participantCount} more player${2 - participantCount == 1 ? '' : 's'}';
+      icon = Icons.people;
+      color = theme.colorScheme.primary;
+    } else if (!allCashedOut) {
+      stepText = 'Step 2: Enter Cash Outs';
+      helpText = cashedOutCount == 0
+          ? 'When the game ends, tap "Cash Outs & Settlement" below'
+          : '$cashedOutCount of $participantCount players cashed out';
+      icon = Icons.attach_money;
+      color = Colors.orange;
+    } else {
+      stepText = 'Step 3: Finalize';
+      helpText = 'All set! Tap "Cash Outs & Settlement" to finalize';
+      icon = Icons.check_circle;
+      color = Colors.green;
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  stepText,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  helpText,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
