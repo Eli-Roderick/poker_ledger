@@ -60,12 +60,11 @@ class _GameSetupWizardState extends ConsumerState<GameSetupWizard> {
 
           return Column(
             children: [
-              // Simple progress bar
+              // Simple progress bar - more obviously clickable
               _SimpleProgressBar(
                 currentPage: _currentPage,
                 onTap: (page) {
-                  // Allow going back but not forward past current progress
-                  if (page < _currentPage || (page == 1 && hasSettlementMode) || (page == 2 && hasEnoughPlayers)) {
+                  if (page < _currentPage || (page == 1 && hasEnoughPlayers) || (page == 2 && hasSettlementMode && hasEnoughPlayers)) {
                     _goToPage(page);
                   }
                 },
@@ -77,25 +76,23 @@ class _GameSetupWizardState extends ConsumerState<GameSetupWizard> {
                   physics: const NeverScrollableScrollPhysics(),
                   onPageChanged: (page) => setState(() => _currentPage = page),
                   children: [
-                    _SettlementModePage(
-                      currentMode: session.settlementMode,
-                      onModeSelected: (mode) async {
-                        await ref.read(sessionRepositoryProvider).setSettlementMode(
-                          sessionId: widget.sessionId,
-                          mode: mode,
-                        );
-                        ref.invalidate(sessionDetailProvider(widget.sessionId));
-                        _goToPage(1);
-                      },
-                    ),
+                    // Page 0: Players (now first)
                     _PlayersPage(
                       sessionId: widget.sessionId,
                       participants: data.participants,
                       allPlayers: data.allPlayers,
-                      isBankerMode: session.settlementMode == 'banker',
+                      onContinue: () => _goToPage(1),
+                    ),
+                    // Page 1: Settlement Mode (now second)
+                    _SettlementModePage(
+                      sessionId: widget.sessionId,
+                      currentMode: session.settlementMode,
+                      participants: data.participants,
+                      allPlayers: data.allPlayers,
                       onBack: () => _goToPage(0),
                       onContinue: () => _goToPage(2),
                     ),
+                    // Page 2: Summary
                     _SummaryPageWrapper(
                       sessionId: widget.sessionId,
                       onBack: () => _goToPage(1),
@@ -111,7 +108,7 @@ class _GameSetupWizardState extends ConsumerState<GameSetupWizard> {
   }
 }
 
-// Simple compact progress bar
+// Simple compact progress bar - more obviously clickable
 class _SimpleProgressBar extends StatelessWidget {
   final int currentPage;
   final Function(int) onTap;
@@ -124,11 +121,11 @@ class _SimpleProgressBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          _StepChip(label: '1. Mode', isActive: currentPage == 0, onTap: () => onTap(0)),
+          _StepChip(label: 'Players', isActive: currentPage == 0, onTap: () => onTap(0)),
           const Expanded(child: Divider()),
-          _StepChip(label: '2. Players', isActive: currentPage == 1, onTap: () => onTap(1)),
+          _StepChip(label: 'Mode', isActive: currentPage == 1, onTap: () => onTap(1)),
           const Expanded(child: Divider()),
-          _StepChip(label: '3. Summary', isActive: currentPage == 2, onTap: () => onTap(2)),
+          _StepChip(label: 'Summary', isActive: currentPage == 2, onTap: () => onTap(2)),
         ],
       ),
     );
@@ -144,58 +141,332 @@ class _StepChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final color = isActive ? Theme.of(context).colorScheme.primary : Colors.grey;
+    return InkWell(
       onTap: onTap,
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-          color: isActive ? Theme.of(context).colorScheme.primary : Colors.grey,
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+            color: color,
+            decoration: TextDecoration.underline,
+            decorationColor: color.withValues(alpha: 0.5),
+          ),
         ),
       ),
     );
   }
 }
 
-// Page 1: Settlement Mode - Simplified
-class _SettlementModePage extends StatelessWidget {
-  final String? currentMode;
-  final Function(String) onModeSelected;
+// Page 0: Players (now first) - with Add Player button, list with buy-ins, rebuy, delete
+class _PlayersPage extends ConsumerWidget {
+  final int sessionId;
+  final List<SessionPlayer> participants;
+  final List<Player> allPlayers;
+  final VoidCallback onContinue;
 
-  const _SettlementModePage({
-    required this.currentMode,
-    required this.onModeSelected,
+  const _PlayersPage({
+    required this.sessionId,
+    required this.participants,
+    required this.allPlayers,
+    required this.onContinue,
   });
 
+  String _fmtCents(int cents) {
+    final fmt = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+    return fmt.format(cents / 100);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final hasEnoughPlayers = participants.length >= 2;
+    final existingIds = participants.map((e) => e.playerId).toSet();
+    final availablePlayers = allPlayers.where((p) => p.id != null && !existingIds.contains(p.id)).toList();
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Select settlement mode',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          // Title
+          const Text('Add players', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 16),
+          
+          // Add Player button
+          OutlinedButton.icon(
+            onPressed: availablePlayers.isEmpty ? null : () => _showAddPlayerDialog(context, ref, availablePlayers),
+            icon: const Icon(Icons.person_add),
+            label: Text(availablePlayers.isEmpty ? 'All players added' : 'Add Player'),
           ),
+          const SizedBox(height: 16),
+          
+          // Player list
+          Expanded(
+            child: participants.isEmpty
+                ? Center(child: Text('No players yet', style: TextStyle(color: Colors.grey.shade600)))
+                : ListView.separated(
+                    itemCount: participants.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final sp = participants[index];
+                      final player = allPlayers.firstWhere((p) => p.id == sp.playerId);
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(player.name),
+                        subtitle: Text(_fmtCents(sp.buyInCentsTotal)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.add_circle_outline, size: 20),
+                              tooltip: 'Rebuy',
+                              onPressed: () => _showRebuyDialog(context, ref, sp, player.name),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 20),
+                              tooltip: 'Remove',
+                              onPressed: () async {
+                                await ref.read(sessionRepositoryProvider).deleteSessionPlayer(sp.id!);
+                                ref.invalidate(sessionDetailProvider(sessionId));
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          
+          // Bottom navigation
+          FilledButton(
+            onPressed: hasEnoughPlayers ? onContinue : null,
+            child: Text(hasEnoughPlayers ? 'Next' : 'Add ${2 - participants.length} more player${participants.length == 1 ? '' : 's'}'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddPlayerDialog(BuildContext context, WidgetRef ref, List<Player> availablePlayers) {
+    final buyInController = TextEditingController(text: '20.00');
+    Player? selectedPlayer;
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Add Player'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<Player>(
+                decoration: const InputDecoration(labelText: 'Player'),
+                items: availablePlayers.map((p) => DropdownMenuItem(value: p, child: Text(p.name))).toList(),
+                onChanged: (p) => setDialogState(() => selectedPlayer = p),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: buyInController,
+                decoration: const InputDecoration(labelText: 'Buy-in amount'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 12),
+              // Preset buy-in buttons
+              Wrap(
+                spacing: 8,
+                children: [10, 20, 50, 100].map((amount) => 
+                  ActionChip(
+                    label: Text('\$$amount'),
+                    onPressed: () => setDialogState(() => buyInController.text = '$amount.00'),
+                  ),
+                ).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: selectedPlayer == null ? null : () async {
+                final cents = _parseMoneyToCents(buyInController.text);
+                await ref.read(sessionRepositoryProvider).addPlayerToSession(
+                  sessionId: sessionId,
+                  playerId: selectedPlayer!.id!,
+                  initialBuyInCents: cents,
+                  paidUpfront: false,
+                );
+                ref.invalidate(sessionDetailProvider(sessionId));
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRebuyDialog(BuildContext context, WidgetRef ref, SessionPlayer sp, String playerName) {
+    final controller = TextEditingController(text: '20.00');
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Rebuy for $playerName'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Amount'),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final cents = _parseMoneyToCents(controller.text);
+              if (cents > 0) {
+                await ref.read(sessionRepositoryProvider).addRebuy(
+                  sessionPlayerId: sp.id!,
+                  amountCents: cents,
+                );
+                ref.invalidate(sessionDetailProvider(sessionId));
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Add Rebuy'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  int _parseMoneyToCents(String input) {
+    final cleaned = input.replaceAll(RegExp('[^0-9.,]'), '').replaceAll(',', '.');
+    final value = double.tryParse(cleaned) ?? 0.0;
+    return (value * 100).round();
+  }
+}
+
+// Page 1: Settlement Mode (now second) - with banker dropdown
+class _SettlementModePage extends ConsumerStatefulWidget {
+  final int sessionId;
+  final String? currentMode;
+  final List<SessionPlayer> participants;
+  final List<Player> allPlayers;
+  final VoidCallback onBack;
+  final VoidCallback onContinue;
+
+  const _SettlementModePage({
+    required this.sessionId,
+    required this.currentMode,
+    required this.participants,
+    required this.allPlayers,
+    required this.onBack,
+    required this.onContinue,
+  });
+
+  @override
+  ConsumerState<_SettlementModePage> createState() => _SettlementModePageState();
+}
+
+class _SettlementModePageState extends ConsumerState<_SettlementModePage> {
+  String? _selectedMode;
+  int? _selectedBankerSpId; // session_player id
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedMode = widget.currentMode;
+  }
+
+  @override
+  void didUpdateWidget(_SettlementModePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _selectedMode = widget.currentMode;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canContinue = _selectedMode == 'pairwise' || 
+        (_selectedMode == 'banker' && _selectedBankerSpId != null);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Select settlement mode', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
           const SizedBox(height: 16),
           
           // Pairwise option
           _ModeOption(
             title: 'Pairwise',
-            description: 'Players settle directly with each other. App calculates minimum transfers.',
-            isSelected: currentMode == 'pairwise',
-            onTap: () => onModeSelected('pairwise'),
+            description: 'Players settle directly with each other',
+            isSelected: _selectedMode == 'pairwise',
+            onTap: () => setState(() {
+              _selectedMode = 'pairwise';
+              _selectedBankerSpId = null;
+            }),
           ),
           const SizedBox(height: 12),
           
           // Banker option
           _ModeOption(
             title: 'Banker',
-            description: 'One person handles all money. Players buy chips upfront from banker.',
-            isSelected: currentMode == 'banker',
-            onTap: () => onModeSelected('banker'),
+            description: 'One player collects and pays out all money',
+            isSelected: _selectedMode == 'banker',
+            onTap: () => setState(() => _selectedMode = 'banker'),
+          ),
+          
+          // Banker dropdown (only show when banker mode selected)
+          if (_selectedMode == 'banker') ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              decoration: const InputDecoration(
+                labelText: 'Select banker',
+                border: OutlineInputBorder(),
+              ),
+              initialValue: _selectedBankerSpId,
+              items: widget.participants.map((sp) {
+                final player = widget.allPlayers.firstWhere((p) => p.id == sp.playerId);
+                return DropdownMenuItem(value: sp.id, child: Text(player.name));
+              }).toList(),
+              onChanged: (id) => setState(() => _selectedBankerSpId = id),
+            ),
+          ],
+          
+          const Spacer(),
+          
+          // Bottom navigation
+          Row(
+            children: [
+              OutlinedButton(onPressed: widget.onBack, child: const Text('Back')),
+              const SizedBox(width: 16),
+              Expanded(
+                child: FilledButton(
+                  onPressed: canContinue ? () async {
+                    // Save mode
+                    await ref.read(sessionRepositoryProvider).setSettlementMode(
+                      sessionId: widget.sessionId,
+                      mode: _selectedMode!,
+                    );
+                    // Set banker if banker mode
+                    if (_selectedMode == 'banker' && _selectedBankerSpId != null) {
+                      await ref.read(sessionRepositoryProvider).setBanker(
+                        sessionId: widget.sessionId,
+                        bankerSessionPlayerId: _selectedBankerSpId,
+                      );
+                    }
+                    ref.invalidate(sessionDetailProvider(widget.sessionId));
+                    widget.onContinue();
+                  } : null,
+                  child: const Text('Next'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -251,200 +522,7 @@ class _ModeOption extends StatelessWidget {
   }
 }
 
-// Page 2: Players - with Add Player button, list with buy-ins, rebuy, delete
-class _PlayersPage extends ConsumerWidget {
-  final int sessionId;
-  final List<SessionPlayer> participants;
-  final List<Player> allPlayers;
-  final bool isBankerMode;
-  final VoidCallback onBack;
-  final VoidCallback onContinue;
-
-  const _PlayersPage({
-    required this.sessionId,
-    required this.participants,
-    required this.allPlayers,
-    required this.isBankerMode,
-    required this.onBack,
-    required this.onContinue,
-  });
-
-  String _fmtCents(int cents) {
-    final fmt = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
-    return fmt.format(cents / 100);
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final hasEnoughPlayers = participants.length >= 2;
-    final existingIds = participants.map((e) => e.playerId).toSet();
-    final availablePlayers = allPlayers.where((p) => p.id != null && !existingIds.contains(p.id)).toList();
-
-    return Column(
-      children: [
-        // Add Player button at top
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: availablePlayers.isEmpty ? null : () => _showAddPlayerDialog(context, ref, availablePlayers),
-              icon: const Icon(Icons.person_add),
-              label: Text(availablePlayers.isEmpty ? 'All players added' : 'Add Player'),
-            ),
-          ),
-        ),
-        
-        // Player list
-        Expanded(
-          child: participants.isEmpty
-              ? Center(
-                  child: Text('No players yet', style: TextStyle(color: Colors.grey.shade600)),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: participants.length,
-                  itemBuilder: (context, index) {
-                    final sp = participants[index];
-                    final player = allPlayers.firstWhere((p) => p.id == sp.playerId);
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(player.name),
-                      subtitle: Text('Buy-in: ${_fmtCents(sp.buyInCentsTotal)}'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Rebuy button
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline),
-                            tooltip: 'Rebuy',
-                            onPressed: () => _showRebuyDialog(context, ref, sp, player.name),
-                          ),
-                          // Delete button
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline),
-                            tooltip: 'Remove',
-                            onPressed: () async {
-                              await ref.read(sessionRepositoryProvider).deleteSessionPlayer(sp.id!);
-                              ref.invalidate(sessionDetailProvider(sessionId));
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-        
-        // Bottom navigation
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              OutlinedButton(onPressed: onBack, child: const Text('Back')),
-              const SizedBox(width: 16),
-              Expanded(
-                child: FilledButton(
-                  onPressed: hasEnoughPlayers ? onContinue : null,
-                  child: Text(hasEnoughPlayers ? 'Continue' : 'Add ${2 - participants.length} more player${participants.length == 1 ? '' : 's'}'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  void _showAddPlayerDialog(BuildContext context, WidgetRef ref, List<Player> availablePlayers) {
-    final buyInController = TextEditingController(text: '20.00');
-    Player? selectedPlayer;
-    
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Add Player'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<Player>(
-                decoration: const InputDecoration(labelText: 'Player'),
-                items: availablePlayers.map((p) => DropdownMenuItem(value: p, child: Text(p.name))).toList(),
-                onChanged: (p) => setDialogState(() => selectedPlayer = p),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: buyInController,
-                decoration: const InputDecoration(labelText: 'Buy-in amount'),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: selectedPlayer == null ? null : () async {
-                final cents = _parseMoneyToCents(buyInController.text);
-                await ref.read(sessionRepositoryProvider).addPlayerToSession(
-                  sessionId: sessionId,
-                  playerId: selectedPlayer!.id!,
-                  initialBuyInCents: cents,
-                  paidUpfront: isBankerMode,
-                );
-                ref.invalidate(sessionDetailProvider(sessionId));
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('Add'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showRebuyDialog(BuildContext context, WidgetRef ref, SessionPlayer sp, String playerName) {
-    final controller = TextEditingController(text: '20.00');
-    
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Rebuy for $playerName'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Amount'),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () async {
-              final cents = _parseMoneyToCents(controller.text);
-              if (cents > 0) {
-                await ref.read(sessionRepositoryProvider).addRebuy(
-                  sessionPlayerId: sp.id!,
-                  amountCents: cents,
-                );
-                ref.invalidate(sessionDetailProvider(sessionId));
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Add Rebuy'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  int _parseMoneyToCents(String input) {
-    final cleaned = input.replaceAll(RegExp('[^0-9.,]'), '').replaceAll(',', '.');
-    final value = double.tryParse(cleaned) ?? 0.0;
-    return (value * 100).round();
-  }
-}
-
-// Page 3: Summary wrapper with back button
+// Page 2: Summary wrapper with title and back button
 class _SummaryPageWrapper extends StatelessWidget {
   final int sessionId;
   final VoidCallback onBack;
@@ -454,7 +532,13 @@ class _SummaryPageWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Title
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Text('Cash outs & settlement', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+        ),
         Expanded(
           child: SessionSummaryScreen(sessionId: sessionId, showAppBar: false),
         ),
@@ -463,7 +547,7 @@ class _SummaryPageWrapper extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              OutlinedButton(onPressed: onBack, child: const Text('Back to Players')),
+              OutlinedButton(onPressed: onBack, child: const Text('Back')),
             ],
           ),
         ),
