@@ -5,6 +5,7 @@ import '../../analytics/data/analytics_providers.dart';
 
 import '../data/sessions_list_providers.dart';
 import '../data/session_providers.dart';
+import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import 'session_detail_screen.dart';
 
 enum SessionsStatusFilter { all, inProgress, finalized }
@@ -50,6 +51,11 @@ class SessionsHomeScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Sessions'),
+        leading: IconButton(
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => context.showHelp(HelpPage.sessions),
+          tooltip: 'Help',
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),

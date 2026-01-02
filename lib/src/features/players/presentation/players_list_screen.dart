@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../analytics/data/analytics_providers.dart';
 
-import '../../players/data/players_providers.dart';
-import '../../players/domain/player.dart';
+import 'package:poker_ledger/src/features/players/data/players_repository.dart';
+import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
+import 'package:poker_ledger/src/features/players/domain/player.dart';
 
 class PlayersListScreen extends ConsumerStatefulWidget {
   static const routeName = '/players';
@@ -32,6 +33,11 @@ class _PlayersListScreenState extends ConsumerState<PlayersListScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Players'),
+        leading: IconButton(
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => context.showHelp(HelpPage.players),
+          tooltip: 'Help',
+        ),
         actions: [
           IconButton(
             tooltip: showDeactivated ? 'Show active' : 'Show deactivated',

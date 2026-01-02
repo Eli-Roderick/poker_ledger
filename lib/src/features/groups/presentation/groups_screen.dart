@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/group_providers.dart';
 import '../domain/group_models.dart';
+import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import 'group_detail_screen.dart';
 
 class GroupsScreen extends ConsumerWidget {
@@ -14,6 +15,11 @@ class GroupsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Groups'),
+        leading: IconButton(
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => context.showHelp(HelpPage.groups),
+          tooltip: 'Help',
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(myGroupsProvider),

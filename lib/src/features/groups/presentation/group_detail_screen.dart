@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../data/group_providers.dart';
-import '../domain/group_models.dart';
+import 'package:poker_ledger/src/features/groups/data/group_repository.dart';
+import 'package:poker_ledger/src/features/groups/domain/group_models.dart';
+import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import '../../players/data/players_providers.dart';
 import '../../players/domain/player.dart';
 
@@ -31,6 +32,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_group.name),
+        leading: IconButton(
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => context.showHelp(HelpPage.groupDetail),
+          tooltip: 'Help',
+        ),
         actions: [
           if (_group.isOwner)
             PopupMenuButton<String>(

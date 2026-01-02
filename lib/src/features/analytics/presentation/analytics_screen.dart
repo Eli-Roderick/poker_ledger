@@ -6,13 +6,14 @@ import 'package:csv/csv.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:share_plus/share_plus.dart';
-import '../../session/domain/session_models.dart';
-import '../../session/presentation/session_summary_screen.dart';
-import '../../groups/data/group_providers.dart';
-import '../../groups/domain/group_models.dart';
+import 'package:poker_ledger/src/features/session/domain/session_models.dart';
+import 'package:poker_ledger/src/features/session/presentation/session_summary_screen.dart';
+import 'package:poker_ledger/src/features/groups/data/group_providers.dart';
+import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
+import 'package:poker_ledger/src/features/groups/domain/group_models.dart';
 
 import '../data/analytics_providers.dart';
-import '../../players/presentation/player_detail_screen.dart';
+import 'package:poker_ledger/src/features/players/presentation/player_detail_screen.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   static const routeName = '/analytics';
@@ -30,37 +31,33 @@ class AnalyticsScreen extends ConsumerWidget {
     
     return Scaffold(
       appBar: AppBar(
-        title: GestureDetector(
-          onTap: () => _showGroupFilterSheet(context, ref, groupsAsync, currentFilters),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(20),
+        title: const Text('Analytics'),
+        leading: IconButton(
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => context.showHelp(HelpPage.analytics),
+          tooltip: 'Help',
+        ),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isGroupFilter ? Icons.group : Icons.person,
+              size: 18,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isGroupFilter ? Icons.group : Icons.person,
-                  size: 18,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  groupLabel,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  Icons.arrow_drop_down,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ],
+            const SizedBox(width: 8),
+            Text(
+              groupLabel,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.arrow_drop_down,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
         ),
         actions: [
           IconButton(
