@@ -101,9 +101,20 @@ class PlayersRepository {
     }).eq('id', playerId);
   }
 
-  /// Search for users by email or display name
+  /// Search for users by email or display name, excluding users already added as players
   Future<List<UserSearchResult>> searchUsers(String query) async {
     if (query.trim().isEmpty) return [];
+    
+    // Get all linked_user_ids for current user's players to exclude them
+    final existingPlayers = await _client
+        .from('players')
+        .select('linked_user_id')
+        .eq('user_id', _client.auth.currentUser!.id)
+        .not('linked_user_id', 'is', null);
+    
+    final existingLinkedIds = existingPlayers
+        .map((e) => e['linked_user_id'] as String)
+        .toSet();
     
     final searchTerm = '%${query.toLowerCase().trim()}%';
     
@@ -111,9 +122,14 @@ class PlayersRepository {
         .from('profiles')
         .select('id, display_name, email')
         .or('email.ilike.$searchTerm,display_name.ilike.$searchTerm')
-        .limit(10);
+        .limit(20);  // Fetch more to account for filtering
     
-    return (data as List).map((e) => UserSearchResult.fromMap(e)).toList();
+    // Filter out users already added as players
+    return (data as List)
+        .where((e) => !existingLinkedIds.contains(e['id'] as String))
+        .map((e) => UserSearchResult.fromMap(e))
+        .take(10)
+        .toList();
   }
 
   /// Get a single player by ID with linked user info
