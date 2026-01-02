@@ -115,20 +115,23 @@ class AnalyticsScreen extends ConsumerWidget {
         error: (e, st) => Center(child: Text('Error: $e')),
         data: (state) {
           if (state.totalSessions == 0) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.analytics_outlined, size: 64, color: Colors.grey.shade400),
-                    const SizedBox(height: 16),
-                    Text(
-                      isGroupFilter ? 'No shared sessions yet' : 'No analytics data yet',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
+            return RefreshIndicator(
+              onRefresh: () => ref.read(analyticsProvider.notifier).refresh(),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                  Icon(Icons.analytics_outlined, size: 64, color: Colors.grey.shade400),
+                  const SizedBox(height: 16),
+                  Text(
+                    isGroupFilter ? 'No shared sessions yet' : 'No analytics data yet',
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
                       isGroupFilter
                           ? 'Sessions shared to this group will appear here. Share a session from its detail page.'
                           : 'Complete and finalize poker sessions to see your statistics here. Analytics show your net profit/loss, session history, and player performance.',
@@ -137,12 +140,15 @@ class AnalyticsScreen extends ConsumerWidget {
                         color: Colors.grey.shade600,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           }
-          return CustomScrollView(
+          return RefreshIndicator(
+            onRefresh: () => ref.read(analyticsProvider.notifier).refresh(),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // Filters moved to AppBar bottom sheet
               SliverPadding(
@@ -239,6 +245,7 @@ class AnalyticsScreen extends ConsumerWidget {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 12)),
             ],
+            ),
           );
         },
       ),

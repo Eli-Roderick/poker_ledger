@@ -15,50 +15,54 @@ class GroupsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Groups'),
       ),
-      body: groupsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('Error: $e')),
-        data: (groups) {
-          if (groups.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.group_outlined,
-                      size: 80,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No Groups Yet',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
+      body: RefreshIndicator(
+        onRefresh: () async => ref.invalidate(myGroupsProvider),
+        child: groupsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, st) => Center(child: Text('Error: $e')),
+          data: (groups) {
+            if (groups.isEmpty) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.25),
+                  Icon(
+                    Icons.group_outlined,
+                    size: 80,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No Groups Yet',
+                    style: Theme.of(context).textTheme.titleLarge,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Text(
                       'Groups let you share poker sessions with friends. Create a group, invite members, then share sessions to see combined analytics.',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: Colors.grey,
                           ),
                       textAlign: TextAlign.center,
                     ),
-                  ],
-                ),
-              ),
-            );
-          }
+                  ),
+                ],
+              );
+            }
 
-          return ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: groups.length,
-            itemBuilder: (context, index) {
-              final group = groups[index];
-              return _GroupTile(group: group);
-            },
-          );
-        },
+            return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: groups.length,
+              itemBuilder: (context, index) {
+                final group = groups[index];
+                return _GroupTile(group: group);
+              },
+            );
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         tooltip: 'Create a new group to share sessions',
