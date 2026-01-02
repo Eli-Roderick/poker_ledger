@@ -307,6 +307,12 @@ class PlayerTile extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (player.isGuest)
+              IconButton(
+                tooltip: 'Link to account',
+                icon: const Icon(Icons.link),
+                onPressed: () => _showLinkUserSheet(context, ref, player),
+              ),
             if (player.active)
               IconButton(
                 tooltip: 'Deactivate',
@@ -348,6 +354,301 @@ class PlayerTile extends ConsumerWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+Future<void> _showLinkUserSheet(BuildContext context, WidgetRef ref, Player player) async {
+  final result = await showModalBottomSheet<UserSearchResult?>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (sheetContext) => _LinkUserSheet(player: player),
+  );
+
+  if (result != null && player.id != null) {
+    await ref.read(playersListProvider.notifier).linkPlayerToUser(
+          playerId: player.id!,
+          userId: result.id,
+        );
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${player.name} linked to ${result.displayName ?? result.email}')),
+      );
+    }
+  }
+}
+
+class _LinkUserSheet extends ConsumerStatefulWidget {
+  final Player player;
+  const _LinkUserSheet({required this.player});
+
+  @override
+  ConsumerState<_LinkUserSheet> createState() => _LinkUserSheetState();
+}
+
+class _LinkUserSheetState extends ConsumerState<_LinkUserSheet> {
+  final _searchCtrl = TextEditingController();
+  Timer? _debounce;
+  bool _isSearching = false;
+  List<UserSearchResult> _searchResults = [];
+  UserSearchResult? _selectedUser;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _searchUsers(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearching = true);
+
+    try {
+      final results = await ref.read(playersListProvider.notifier).searchUsers(query);
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSearching = false);
+      }
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      _searchUsers(query);
+    });
+  }
+
+  void _selectUser(UserSearchResult user) {
+    setState(() {
+      _selectedUser = user;
+      _searchCtrl.clear();
+      _searchResults = [];
+    });
+  }
+
+  void _clearSelectedUser() {
+    setState(() {
+      _selectedUser = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.95,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (context, scrollController) {
+          return Column(
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              // Title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Link ${widget.player.name}',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Search field
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: TextField(
+                  controller: _searchCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Search by email or name',
+                    hintText: 'Find a user account to link...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _isSearching
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : _searchCtrl.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchCtrl.clear();
+                                  setState(() => _searchResults = []);
+                                },
+                              )
+                            : null,
+                  ),
+                  onChanged: _onSearchChanged,
+                ),
+              ),
+              // Selected user
+              if (_selectedUser != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: Colors.green.shade100,
+                          child: const Icon(Icons.person, color: Colors.green),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedUser!.displayName ?? 'No name',
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              if (_selectedUser!.email != null)
+                                Text(
+                                  _selectedUser!.email!,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Colors.grey.shade600,
+                                      ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: _clearSelectedUser,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Search results
+              if (_searchResults.isNotEmpty && _selectedUser == null)
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _searchResults.length,
+                    itemBuilder: (context, index) {
+                      final user = _searchResults[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            child: Icon(
+                              Icons.person,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          title: Text(user.displayName ?? 'No name'),
+                          subtitle: Text(user.email ?? ''),
+                          trailing: const Icon(Icons.link),
+                          onTap: () => _selectUser(user),
+                        ),
+                      );
+                    },
+                  ),
+                )
+              else if (_searchResults.isEmpty && _searchCtrl.text.isNotEmpty && !_isSearching && _selectedUser == null)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No users found',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_selectedUser == null)
+                Expanded(
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.link, size: 48, color: Colors.grey.shade400),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Search for a user to link',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Link button
+              if (_selectedUser != null)
+                const Spacer(),
+              if (_selectedUser != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.pop(context, _selectedUser),
+                      icon: const Icon(Icons.link),
+                      label: const Text('Link Account'),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
