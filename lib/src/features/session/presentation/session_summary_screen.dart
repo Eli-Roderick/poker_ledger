@@ -182,9 +182,18 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                           onEditingComplete: () {
                             // Format with decimals when done editing
                             final text = c.text.trim();
-                            if (text.isNotEmpty && !text.contains('.')) {
-                              c.text = '$text.00';
+                            if (text.isNotEmpty) {
+                              // Add decimals if needed
+                              if (!text.contains('.')) {
+                                c.text = '$text.00';
+                              } else if (text.split('.')[1].length == 1) {
+                                c.text = '${text}0';
+                              }
                             }
+                            // Unfocus to close keyboard
+                            FocusScope.of(context).unfocus();
+                            // Clear selection
+                            c.selection = TextSelection.collapsed(offset: c.text.length);
                           },
                         ),
                       ),
