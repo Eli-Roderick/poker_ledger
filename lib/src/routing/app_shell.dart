@@ -2,10 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../features/players/presentation/players_list_screen.dart';
-import '../features/session/presentation/sessions_home_screen.dart';
 import '../features/analytics/presentation/analytics_screen.dart';
 import '../features/groups/presentation/groups_screen.dart';
+import '../features/players/presentation/players_list_screen.dart';
+import '../features/session/presentation/sessions_home_screen.dart';
 import '../profile/presentation/profile_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -20,8 +20,8 @@ class _AppShellState extends State<AppShell> {
   bool _showedOnboarding = false;
 
   final _screens = const [
-    SessionsHomeScreen(),
     PlayersListScreen(),
+    SessionsHomeScreen(),
     AnalyticsScreen(),
     GroupsScreen(),
     ProfileScreen(),
