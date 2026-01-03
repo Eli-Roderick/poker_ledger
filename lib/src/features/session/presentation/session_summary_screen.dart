@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
@@ -42,6 +43,22 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
   }
 
   String _fmtCents(int cents) => NumberFormat.simpleCurrency().format(cents / 100);
+
+  void _formatCashOutField(TextEditingController controller) {
+    final text = controller.text.trim();
+    if (text.isNotEmpty) {
+      // Add decimals if needed
+      if (!text.contains('.')) {
+        controller.text = '$text.00';
+      } else if (text.split('.')[1].length == 1) {
+        controller.text = '${text}0';
+      }
+    }
+    // Unfocus to close keyboard
+    FocusScope.of(context).unfocus();
+    // Clear selection
+    controller.selection = TextSelection.collapsed(offset: controller.text.length);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -180,21 +197,15 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                             });
                           },
                           onEditingComplete: () {
-                            // Format with decimals when done editing
-                            final text = c.text.trim();
-                            if (text.isNotEmpty) {
-                              // Add decimals if needed
-                              if (!text.contains('.')) {
-                                c.text = '$text.00';
-                              } else if (text.split('.')[1].length == 1) {
-                                c.text = '${text}0';
-                              }
-                            }
-                            // Unfocus to close keyboard
+                            _formatCashOutField(c);
                             FocusScope.of(context).unfocus();
-                            // Clear selection
-                            c.selection = TextSelection.collapsed(offset: c.text.length);
                           },
+                          onTapOutside: (event) {
+                            _formatCashOutField(c);
+                          },
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(RegExp(r'^\d+(\.\d{0,2})?$')),
+                          ],
                         ),
                       ),
                     ],
