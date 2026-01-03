@@ -233,18 +233,22 @@ class AnalyticsScreen extends ConsumerWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Text('Players: ${s.players}'),
-                            Text('Net: ${currency.format(s.netCents / 100)}',
-                                style: TextStyle(color: s.netCents == 0 ? Theme.of(context).colorScheme.outline : (s.netCents > 0 ? Colors.green : Colors.red))),
+                            Text('${s.players} players', style: Theme.of(context).textTheme.bodySmall),
+                            Text(currency.format(s.netCents / 100),
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: s.netCents == 0 ? Theme.of(context).colorScheme.outline : (s.netCents > 0 ? Colors.green : Colors.red),
+                                )),
                           ],
                         ),
                         if (canRemove) ...[
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 16),
                           IconButton(
                             icon: const Icon(Icons.remove_circle_outline),
                             onPressed: () => _showRemoveSessionDialog(context, ref, s.session.id!, state.filters.groupId!),
                             tooltip: 'Remove from group',
                             iconSize: 20,
+                            padding: const EdgeInsets.only(right: 8),
                             color: Theme.of(context).colorScheme.error,
                           ),
                         ],
@@ -272,14 +276,11 @@ class AnalyticsScreen extends ConsumerWidget {
   String _formatSessionSubtitle(Session s, String? ownerName, bool isOwner, bool isGroupFilter, String? sharedByName) {
     final start = DateFormat.yMMMd().add_jm().format(s.startedAt);
     final status = s.finalized ? 'Finalized' : 'In progress';
-    // In group analytics, show who owns the session and who shared it
+    // In group analytics, show who shared the session
     if (isGroupFilter) {
       String result = '$start • $status';
-      if (ownerName != null) {
-        result += '\nOwner: $ownerName';
-      }
-      if (sharedByName != null && sharedByName != ownerName) {
-        result += ' • Shared by $sharedByName';
+      if (sharedByName != null) {
+        result += '\nShared By: $sharedByName';
       }
       return result;
     }

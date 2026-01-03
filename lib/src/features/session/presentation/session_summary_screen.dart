@@ -340,16 +340,91 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                   },
                 ),
               const Divider(height: 24),
-              ListTile(
-                leading: const Icon(Icons.calculate),
-                title: const Text('Totals'),
-                subtitle: Text(isBanker 
-                    ? 'Buy-ins: ${_fmtCents(totalBuyIns)}  •  Cash-outs: ${_fmtCents(totalCashOuts)}'
-                    : 'Total cash-outs: ${_fmtCents(totalCashOuts)}'),
-                trailing: isBanker ? Text(
-                  _fmtCents(delta),
-                  style: TextStyle(color: delta == 0 ? Colors.green : Colors.orange),
-                ) : null,
+              // Buy-ins / Cash-outs / Difference summary widget
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: delta == 0 
+                      ? Colors.green.withValues(alpha: 0.1)
+                      : Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: delta == 0 
+                        ? Colors.green.withValues(alpha: 0.3)
+                        : Colors.orange.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Buy-ins',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          Text(
+                            _fmtCents(totalBuyIns),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Cash-outs',
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          Text(
+                            _fmtCents(totalCashOuts),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          delta == 0 ? 'Balanced' : 'Off by',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: delta == 0 ? Colors.green : Colors.orange,
+                          ),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              delta == 0 ? Icons.check_circle : Icons.warning_amber_rounded,
+                              size: 18,
+                              color: delta == 0 ? Colors.green : Colors.orange,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              delta == 0 ? '\$0.00' : _fmtCents(delta.abs()),
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: delta == 0 ? Colors.green : Colors.orange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           );

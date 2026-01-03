@@ -42,6 +42,8 @@ class _GameSetupWizardState extends ConsumerState<GameSetupWizard> {
     final asyncState = ref.watch(sessionDetailProvider(widget.sessionId));
     final sessionName = asyncState.valueOrNull?.session.name;
     
+    final isFinalized = asyncState.valueOrNull?.session.finalized ?? false;
+    
     return Scaffold(
       appBar: AppBar(
         title: Text((sessionName == null || sessionName.trim().isEmpty) 
@@ -51,6 +53,22 @@ class _GameSetupWizardState extends ConsumerState<GameSetupWizard> {
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: isFinalized ? [
+          IconButton(
+            icon: const Icon(Icons.group_add),
+            tooltip: 'Share to groups',
+            onPressed: () => _showShareToGroupsDialog(context, ref, widget.sessionId),
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: 'Share summary',
+            onPressed: () async {
+              final detail = await ref.read(sessionDetailProvider(widget.sessionId).future);
+              final summary = _buildShareSummaryText(detail);
+              await SharePlus.instance.share(ShareParams(text: summary, subject: 'Poker Game Summary'));
+            },
+          ),
+        ] : null,
       ),
       body: asyncState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -733,4 +751,122 @@ class _WizardFinalizeDialogState extends ConsumerState<_WizardFinalizeDialog> {
       ],
     );
   }
+}
+
+// Helper function to show share to groups dialog
+Future<void> _showShareToGroupsDialog(BuildContext context, WidgetRef ref, int sessionId) async {
+  final groups = await ref.read(myGroupsProvider.future);
+  final currentGroupIds = await ref.read(groupRepositoryProvider).getSessionGroupIds(sessionId);
+  
+  if (groups.isEmpty) {
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('No Groups'),
+          content: const Text('Create a group first to share sessions with friends.'),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+    return;
+  }
+
+  final selectedGroupIds = Set<int>.from(currentGroupIds);
+
+  if (!context.mounted) return;
+  
+  await showDialog(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Share to Groups'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Select which groups can see this session:',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              ...groups.map((group) => CheckboxListTile(
+                title: Text(group.name),
+                subtitle: Text('${group.memberCount} member${group.memberCount == 1 ? '' : 's'}'),
+                value: selectedGroupIds.contains(group.id),
+                onChanged: (checked) {
+                  setState(() {
+                    if (checked == true) {
+                      selectedGroupIds.add(group.id);
+                    } else {
+                      selectedGroupIds.remove(group.id);
+                    }
+                  });
+                },
+              )),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              await ref.read(groupRepositoryProvider).updateSessionGroups(
+                sessionId,
+                selectedGroupIds.toList(),
+              );
+              if (dialogContext.mounted) {
+                Navigator.pop(dialogContext);
+              }
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      selectedGroupIds.isEmpty
+                          ? 'Game is now private'
+                          : 'Game shared to ${selectedGroupIds.length} group${selectedGroupIds.length == 1 ? '' : 's'}',
+                    ),
+                  ),
+                );
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// Helper function to build share summary text
+String _buildShareSummaryText(SessionDetailState detail) {
+  final buf = StringBuffer();
+  final fmt = NumberFormat.simpleCurrency();
+  buf.writeln('Poker Game Summary');
+  final isBanker = detail.session.settlementMode == 'banker' && detail.session.bankerSessionPlayerId != null;
+  String bankerName = '';
+  if (isBanker) {
+    final bankerSp = detail.participants.firstWhere((sp) => sp.id == detail.session.bankerSessionPlayerId);
+    bankerName = detail.allPlayers.firstWhere((p) => p.id == bankerSp.playerId).name;
+  }
+  buf.writeln('Mode: ${detail.session.settlementMode}${isBanker ? ' (Banker: $bankerName)' : ''}');
+  buf.writeln('');
+  buf.writeln('Players:');
+  for (final p in detail.participants) {
+    final name = detail.allPlayers.firstWhere((e) => e.id == p.playerId).name;
+    final buy = fmt.format(p.buyInCentsTotal / 100);
+    final cash = fmt.format((p.cashOutCents ?? 0) / 100);
+    buf.writeln('- $name: buy-ins $buy, cash-out $cash');
+  }
+  return buf.toString();
 }

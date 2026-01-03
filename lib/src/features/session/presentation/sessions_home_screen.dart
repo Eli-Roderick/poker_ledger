@@ -6,7 +6,6 @@ import '../../analytics/data/analytics_providers.dart';
 import '../data/sessions_list_providers.dart';
 import '../data/session_providers.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
-import 'session_detail_screen.dart';
 import 'game_setup_wizard.dart';
 
 enum SessionsStatusFilter { all, inProgress, finalized }
@@ -260,9 +259,7 @@ class SessionsHomeScreen extends ConsumerWidget {
                       : null,
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => s.finalized 
-                          ? SessionDetailScreen(sessionId: s.id!)
-                          : GameSetupWizard(sessionId: s.id!),
+                      builder: (_) => GameSetupWizard(sessionId: s.id!),
                     ),
                   ),
                   onLongPress: isOwner
