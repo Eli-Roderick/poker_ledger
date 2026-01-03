@@ -234,11 +234,25 @@ class SessionsHomeScreen extends ConsumerWidget {
                               ),
                             );
                             if (ok == true) {
-                              await ref.read(sessionRepositoryProvider).deleteSession(s.id!);
-                              await ref.read(analyticsProvider.notifier).refresh();
-                              await ref.read(sessionsListProvider.notifier).refresh();
-                              if (context.mounted) {
+                              if (s.id != null) {
+                                // Optimistically remove the session from the list
+                                ref.read(sessionsListProvider.notifier).removeSessionOptimistically(s.id!);
+                                
+                                // Show immediate confirmation
                                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Game deleted')));
+                                
+                                // Perform deletion in background
+                                ref.read(sessionRepositoryProvider).deleteSession(s.id!).then((_) {
+                                  // Refresh data in background
+                                  ref.read(analyticsProvider.notifier).refresh();
+                                  ref.read(sessionsListProvider.notifier).refresh();
+                                }).catchError((error) {
+                                  // Revert on error
+                                  ref.read(sessionsListProvider.notifier).refresh();
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $error')));
+                                });
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot delete session without ID')));
                               }
                             }
                           },

@@ -63,6 +63,13 @@ class SessionsListNotifier extends AsyncNotifier<List<SessionWithOwner>> {
       isOwner: true,
     )).toList());
   }
+
+  Future<void> removeSessionOptimistically(int sessionId) async {
+    final currentState = state;
+    if (currentState is AsyncData && currentState.value != null) {
+      state = AsyncData(currentState.value!.where((session) => session.session.id != sessionId).toList());
+    }
+  }
 }
 
 final sessionsListProvider = AsyncNotifierProvider<SessionsListNotifier, List<SessionWithOwner>>(
