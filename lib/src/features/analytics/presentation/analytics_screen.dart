@@ -152,29 +152,42 @@ class AnalyticsScreen extends ConsumerWidget {
             slivers: [
               // Filters moved to AppBar bottom sheet
               SliverPadding(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 sliver: SliverToBoxAdapter(
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Row(
-                        children: [
-                          Expanded(child: _KpiChip(label: 'Sessions', value: state.totalSessions.toString())),
-                          const SizedBox(width: 8),
-                          Expanded(child: _KpiChip(label: 'Unique players', value: state.totalPlayersSeen.toString())),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _KpiChip(
-                              label: 'Net total',
-                              value: currency.format(state.globalNetCents / 100),
-                              valueColor: state.globalNetCents == 0
-                                  ? Theme.of(context).colorScheme.outline
-                                  : (state.globalNetCents > 0 ? Colors.green : Colors.red),
-                            ),
-                          ),
-                        ],
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _KpiChip(
+                          label: 'Sessions',
+                          value: state.totalSessions.toString(),
+                        ),
                       ),
-                    ),
+                      Container(
+                        width: 1,
+                        height: 32,
+                        color: Theme.of(context).dividerColor,
+                      ),
+                      Expanded(
+                        child: _KpiChip(
+                          label: 'Players',
+                          value: state.totalPlayersSeen.toString(),
+                        ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 32,
+                        color: Theme.of(context).dividerColor,
+                      ),
+                      Expanded(
+                        child: _KpiChip(
+                          label: 'Net Total',
+                          value: currency.format(state.globalNetCents / 100),
+                          valueColor: state.globalNetCents == 0
+                              ? Theme.of(context).colorScheme.outline
+                              : (state.globalNetCents > 0 ? Colors.green : Colors.red),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -336,16 +349,30 @@ class _KpiChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Chip(
-      label: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.labelSmall),
-          const SizedBox(height: 2),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w600, color: valueColor)),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: valueColor,
+            ),
+            maxLines: 1,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
   }
 }

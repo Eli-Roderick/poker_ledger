@@ -255,11 +255,25 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       );
 
       if (confirmed == true) {
-        await repo.transferOwnership(_group.id, member.oderId);
-        setState(() {
-          _group = _group.copyWith(isOwner: false);
-        });
-        ref.invalidate(groupMembersProvider(_group.id));
+        try {
+          await repo.transferOwnership(_group.id, member.oderId);
+          if (mounted) {
+            setState(() {
+              _group = _group.copyWith(isOwner: false);
+            });
+            ref.invalidate(groupMembersProvider(_group.id));
+            ref.invalidate(myGroupsProvider);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Ownership transferred successfully')),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error transferring ownership: $e')),
+            );
+          }
+        }
       }
     } else if (action == 'remove') {
       final confirmed = await showDialog<bool>(

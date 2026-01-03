@@ -7,6 +7,7 @@ import '../data/sessions_list_providers.dart';
 import '../data/session_providers.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import 'game_setup_wizard.dart';
+import 'session_detail_screen.dart';
 
 enum SessionsStatusFilter { all, inProgress, finalized }
 

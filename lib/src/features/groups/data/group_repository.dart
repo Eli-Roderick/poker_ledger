@@ -237,24 +237,26 @@ class GroupRepository {
 
   /// Transfer ownership to another member
   Future<void> transferOwnership(int groupId, String newOwnerId) async {
-    // First add current owner as a member
-    await _client.from('group_members').insert({
-      'group_id': groupId,
-      'user_id': _currentUserId,
-    });
+    final currentUserId = _currentUserId;
+    
+    // Step 1: Update group owner first (current user is still owner, so they can do this)
+    await _client
+        .from('groups')
+        .update({'owner_id': newOwnerId})
+        .eq('id', groupId);
 
-    // Remove new owner from members (they'll be owner now)
+    // Step 2: Remove new owner from members table (they're now the owner)
     await _client
         .from('group_members')
         .delete()
         .eq('group_id', groupId)
         .eq('user_id', newOwnerId);
 
-    // Update group owner
-    await _client
-        .from('groups')
-        .update({'owner_id': newOwnerId})
-        .eq('id', groupId);
+    // Step 3: Add previous owner as a member
+    await _client.from('group_members').insert({
+      'group_id': groupId,
+      'user_id': currentUserId,
+    });
   }
 
   /// Get groups a session is shared to

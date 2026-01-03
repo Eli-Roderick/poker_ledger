@@ -108,8 +108,6 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
   }
 
   Future<void> refresh() async {
-    // Advance the window end to now, so recently started sessions are included
-    _filters = _filters.copyWith(end: DateTime.now());
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async => _load());
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_providers.dart';
+import '../providers/app_settings_providers.dart';
 import '../data/admin_config.dart';
 import '../../routing/app_shell.dart';
 import '../../migration/data/migration_service.dart';
@@ -36,6 +37,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
+    final maintenanceAsync = ref.watch(maintenanceModeProvider);
 
     return authState.when(
       data: (state) {
@@ -43,7 +45,8 @@ class _AuthGateState extends ConsumerState<AuthGate> {
           final userId = state.session!.user.id;
           
           // Check maintenance mode - only admins can access
-          if (AdminConfig.maintenanceMode && !AdminConfig.isAdmin(userId)) {
+          final maintenanceEnabled = maintenanceAsync.valueOrNull ?? false;
+          if (maintenanceEnabled && !AdminConfig.isAdmin(userId)) {
             return const MaintenanceScreen();
           }
           
