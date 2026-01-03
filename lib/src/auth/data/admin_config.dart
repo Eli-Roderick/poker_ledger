@@ -5,7 +5,7 @@ class AdminConfig {
   ];
 
   // Set to true to enable maintenance mode (blocks non-admin users)
-  static const bool maintenanceMode = false;
+  static const bool maintenanceMode = true;
 
   static bool isAdmin(String? userId) {
     if (userId == null) return false;
