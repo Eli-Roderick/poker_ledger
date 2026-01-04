@@ -285,9 +285,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             Text('Are you sure you want to delete your account?'),
             SizedBox(height: 16),
             Text(
-              'Your data will be retained for 30 days. If you sign up again '
-              'with the same email during this period, you can choose to '
-              'restore your data.',
+              'Your data will be retained for 30 days. If you sign in again '
+              'with the same email during this period, you can restore your account.',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Groups you own will be transferred to the oldest member, or deleted if empty.',
               style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ],

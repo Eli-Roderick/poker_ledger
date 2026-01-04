@@ -67,6 +67,14 @@ String formatAuthError(dynamic error) {
     return 'Your session has expired. Please try again.';
   }
   
+  if (lowerMessage.contains('banned') || lowerMessage.contains('disabled')) {
+    return 'This account has been disabled. Please contact support.';
+  }
+  
+  if (lowerMessage.contains('invalid password')) {
+    return 'Incorrect password. Please try again.';
+  }
+  
   // If we can't map it, return a cleaned-up version
   // Capitalize first letter and ensure it ends with a period
   if (message.isNotEmpty) {
