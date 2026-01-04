@@ -112,7 +112,7 @@ class HelpScreen extends StatelessWidget {
           points: [
             'See all members and who owns the group',
             'Owners can invite new members',
-            'Transfer ownership if you want someone else to run it',
+            'Owners can remove members from the group',
             'Remove members or leave the group',
           ],
         );

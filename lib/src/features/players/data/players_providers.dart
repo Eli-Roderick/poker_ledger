@@ -45,6 +45,11 @@ class PlayersListNotifier extends AsyncNotifier<List<Player>> {
     return _repo.searchUsers(query);
   }
 
+  /// Search through user's linked players (for group invites)
+  Future<List<Player>> searchLinkedPlayers(String query) async {
+    return _repo.searchLinkedPlayers(query);
+  }
+
   Future<void> linkPlayerToUser({required int playerId, required String userId}) async {
     await _repo.linkToUser(playerId: playerId, userId: userId);
     await refresh();

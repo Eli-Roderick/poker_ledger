@@ -170,21 +170,8 @@ class GroupRepository {
     return members;
   }
 
-  /// Invite a user to a group by email (owner only)
-  Future<bool> inviteMemberByEmail(int groupId, String email) async {
-    // Find user by email in profiles
-    final profiles = await _client
-        .from('profiles')
-        .select('id')
-        .eq('email', email.toLowerCase().trim())
-        .limit(1);
-
-    if (profiles.isEmpty) {
-      return false; // User not found
-    }
-
-    final userId = profiles[0]['id'] as String;
-
+  /// Invite a user to a group by user ID (owner only)
+  Future<bool> inviteMemberByUserId(int groupId, String userId) async {
     // Check if already a member
     final existing = await _client
         .from('group_members')
@@ -233,30 +220,6 @@ class GroupRepository {
         .delete()
         .eq('group_id', groupId)
         .eq('user_id', _currentUserId);
-  }
-
-  /// Transfer ownership to another member
-  Future<void> transferOwnership(int groupId, String newOwnerId) async {
-    final currentUserId = _currentUserId;
-    
-    // Step 1: Update group owner first (current user is still owner, so they can do this)
-    await _client
-        .from('groups')
-        .update({'owner_id': newOwnerId})
-        .eq('id', groupId);
-
-    // Step 2: Remove new owner from members table (they're now the owner)
-    await _client
-        .from('group_members')
-        .delete()
-        .eq('group_id', groupId)
-        .eq('user_id', newOwnerId);
-
-    // Step 3: Add previous owner as a member
-    await _client.from('group_members').insert({
-      'group_id': groupId,
-      'user_id': currentUserId,
-    });
   }
 
   /// Get groups a session is shared to

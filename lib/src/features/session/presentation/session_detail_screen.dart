@@ -153,11 +153,19 @@ class SessionDetailScreen extends ConsumerWidget {
                       icon: const Icon(Icons.person_add),
                       label: const Text('Add player'),
                       onPressed: () async {
-                        // Inline Add Player flow (moved from separate section)
+                        // Inline Add Player flow - only linked players allowed
                         final existingIds = participants.map((e) => e.playerId).toSet();
                         final latestPlayers = await ref.read(sessionRepositoryProvider).getAllPlayers(activeOnly: true);
-                        final freshAvailable = latestPlayers.where((p) => p.id != null && !existingIds.contains(p.id)).toList();
-                        if (freshAvailable.isEmpty) return;
+                        // Only allow linked players (non-guests) to be added to sessions
+                        final freshAvailable = latestPlayers.where((p) => p.id != null && !existingIds.contains(p.id) && p.isLinked).toList();
+                        if (freshAvailable.isEmpty) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('No linked players available. Link players to accounts first.')),
+                            );
+                          }
+                          return;
+                        }
                         if (!context.mounted) return;
                         final result = await showDialog<_AddParticipantResult?> (
                           context: context,

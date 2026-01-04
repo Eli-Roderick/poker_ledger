@@ -145,6 +145,51 @@ class PlayersRepository {
         .toList();
   }
 
+  /// Search through user's linked players by name or email
+  /// This is used for group invites - searches players you've added, not all users
+  Future<List<Player>> searchLinkedPlayers(String query) async {
+    if (query.trim().isEmpty) return [];
+    
+    final searchTerm = '%${query.toLowerCase().trim()}%';
+    
+    // Search only the current user's players that are linked to accounts
+    final data = await _client
+        .from('players')
+        .select()
+        .eq('user_id', _client.auth.currentUser!.id)
+        .not('linked_user_id', 'is', null)
+        .or('name.ilike.$searchTerm,email.ilike.$searchTerm')
+        .limit(10);
+    
+    // Batch fetch linked user display names
+    final linkedUserIds = data
+        .map((e) => e['linked_user_id'] as String?)
+        .where((id) => id != null)
+        .cast<String>()
+        .toSet()
+        .toList();
+    
+    Map<String, String> displayNameById = {};
+    if (linkedUserIds.isNotEmpty) {
+      final profiles = await _client
+          .from('profiles')
+          .select('id, display_name')
+          .inFilter('id', linkedUserIds);
+      displayNameById = {
+        for (final p in profiles)
+          p['id'] as String: p['display_name'] as String? ?? 'Unknown'
+      };
+    }
+    
+    return data.map((e) {
+      final linkedUserId = e['linked_user_id'] as String?;
+      return Player.fromMap({
+        ...e,
+        'linked_user_display_name': linkedUserId != null ? displayNameById[linkedUserId] : null,
+      });
+    }).toList();
+  }
+
   /// Get a single player by ID with linked user info
   Future<Player?> getById(int id) async {
     final data = await _client

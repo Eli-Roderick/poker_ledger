@@ -127,11 +127,15 @@ class _AddParticipantTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final existingIds = participants.map((e) => e.playerId).toSet();
-    final available = allPlayers.where((p) => p.id != null && !existingIds.contains(p.id)).toList();
+    // Only allow linked players (non-guests) to be added to sessions
+    final available = allPlayers.where((p) => p.id != null && !existingIds.contains(p.id) && p.isLinked).toList();
+    final hasUnlinkedPlayers = allPlayers.any((p) => p.isGuest && !existingIds.contains(p.id));
     return ListTile(
       leading: const Icon(Icons.person_add),
       title: const Text('Add player to session'),
-      subtitle: Text(available.isEmpty ? 'All players already added' : 'Choose player and initial buy-in'),
+      subtitle: Text(available.isEmpty 
+          ? (hasUnlinkedPlayers ? 'Link players to accounts to add them' : 'All linked players already added') 
+          : 'Choose player and initial buy-in'),
       onTap: available.isEmpty
           ? null
           : () async {
