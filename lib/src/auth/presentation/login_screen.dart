@@ -65,6 +65,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _restoreAccount() async {
     if (_deletedAccountInfo == null) return;
     
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    
+    if (password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your password to restore your account';
+      });
+      return;
+    }
+    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -72,7 +82,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     
     try {
       final authRepo = ref.read(authRepositoryProvider);
-      await authRepo.restoreDeletedAccount(_deletedAccountInfo!.userId);
+      
+      // This verifies the password before restoring
+      await authRepo.restoreDeletedAccount(email, password);
       
       setState(() {
         _deletedAccountInfo = null;
@@ -84,14 +96,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
       }
       
-      // Wait a moment for the trigger to unban the account
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Wait for the trigger to unban the account
+      await Future.delayed(const Duration(seconds: 1));
       
-      // Automatically sign in after restoration
-      await _signIn();
+      // Now sign in - the account should be unbanned
+      try {
+        await authRepo.signIn(email: email, password: password);
+      } catch (signInError) {
+        // If sign in still fails, wait a bit more and try again
+        await Future.delayed(const Duration(seconds: 1));
+        await authRepo.signIn(email: email, password: password);
+      }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to restore account: $e';
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        // Don't clear deletedAccountInfo on password error so they can try again
       });
     } finally {
       if (mounted) {

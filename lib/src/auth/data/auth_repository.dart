@@ -29,15 +29,27 @@ class AuthRepository {
     );
   }
 
-  /// Restore a deleted account by clearing the deletion flags
-  Future<void> restoreDeletedAccount(String userId) async {
-    await _client
-        .from('profiles')
-        .update({
-          'deleted_at': null,
-          'deletion_scheduled_at': null,
-        })
-        .eq('id', userId);
+  /// Restore a deleted account - requires correct password for security
+  /// Returns true if restoration was successful
+  Future<bool> restoreDeletedAccount(String email, String password) async {
+    final response = await _client.rpc(
+      'restore_deleted_account',
+      params: {
+        'restore_email': email,
+        'restore_password': password,
+      },
+    );
+    
+    if (response == null) {
+      throw Exception('Failed to restore account');
+    }
+    
+    final result = response as Map<String, dynamic>;
+    if (result['success'] != true) {
+      throw Exception(result['error'] ?? 'Failed to restore account');
+    }
+    
+    return true;
   }
 
   Future<AuthResponse> signUp({

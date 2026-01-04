@@ -292,7 +292,9 @@ class PlayerTile extends ConsumerWidget {
             // Show email if available (for linked users, show their email)
             if (player.email != null && player.email!.isNotEmpty)
               Text(player.email!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline)),
-            if (player.isGuest)
+            if (player.isDeletedGuest)
+              Text('Deleted guest', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.red.shade400))
+            else if (player.isLegacyGuest)
               Text('Legacy guest', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orange)),
           ],
         ),

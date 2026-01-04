@@ -22,6 +22,9 @@ class Player {
   
   /// Display name of the linked user (cached for UI display)
   final String? linkedUserDisplayName;
+  
+  /// True if this player was previously linked to a user who deleted their account
+  final bool wasLinkedToDeletedUser;
 
   const Player({
     this.id,
@@ -33,6 +36,7 @@ class Player {
     this.active = true,
     this.linkedUserId,
     this.linkedUserDisplayName,
+    this.wasLinkedToDeletedUser = false,
   });
 
   /// True if this player is not linked to a user account
@@ -40,6 +44,12 @@ class Player {
   
   /// True if this player is linked to a user account
   bool get isLinked => linkedUserId != null;
+  
+  /// True if this is a deleted user's player (was linked, user deleted account)
+  bool get isDeletedGuest => isGuest && wasLinkedToDeletedUser;
+  
+  /// True if this is a legacy guest (never was linked to an account)
+  bool get isLegacyGuest => isGuest && !wasLinkedToDeletedUser;
 
   Player copyWith({
     int? id,
@@ -51,6 +61,7 @@ class Player {
     bool? active,
     String? linkedUserId,
     String? linkedUserDisplayName,
+    bool? wasLinkedToDeletedUser,
   }) {
     return Player(
       id: id ?? this.id,
@@ -62,6 +73,7 @@ class Player {
       active: active ?? this.active,
       linkedUserId: linkedUserId ?? this.linkedUserId,
       linkedUserDisplayName: linkedUserDisplayName ?? this.linkedUserDisplayName,
+      wasLinkedToDeletedUser: wasLinkedToDeletedUser ?? this.wasLinkedToDeletedUser,
     );
   }
 
@@ -86,6 +98,7 @@ class Player {
         active: map['active'] as bool? ?? true,
         linkedUserId: map['linked_user_id'] as String?,
         linkedUserDisplayName: map['linked_user_display_name'] as String?,
+        wasLinkedToDeletedUser: map['was_linked_to_deleted_user'] as bool? ?? false,
       );
 }
 

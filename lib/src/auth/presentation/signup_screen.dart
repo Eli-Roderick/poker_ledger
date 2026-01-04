@@ -132,6 +132,16 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   Future<void> _restoreAccount() async {
     if (_deletedAccountInfo == null) return;
     
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    
+    if (password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your password to restore your account';
+      });
+      return;
+    }
+    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -139,7 +149,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     
     try {
       final authRepo = ref.read(authRepositoryProvider);
-      await authRepo.restoreDeletedAccount(_deletedAccountInfo!.userId);
+      await authRepo.restoreDeletedAccount(email, password);
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -149,7 +159,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to restore account: $e';
+        _errorMessage = e.toString().replaceAll('Exception: ', '');
       });
     } finally {
       if (mounted) {
