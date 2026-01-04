@@ -7,7 +7,14 @@ import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  final String? initialEmail;
+  final bool showRestorePrompt;
+  
+  const LoginScreen({
+    super.key,
+    this.initialEmail,
+    this.showRestorePrompt = false,
+  });
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -21,6 +28,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _errorMessage;
   bool _obscurePassword = true;
   DeletedAccountInfo? _deletedAccountInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialEmail != null) {
+      _emailController.text = widget.initialEmail!;
+    }
+    if (widget.showRestorePrompt) {
+      // Show restore message after build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _errorMessage = 'Enter your password and click "Restore Account" to restore your deleted account.';
+          _deletedAccountInfo = DeletedAccountInfo(
+            userId: '', // Will be fetched when they try to restore
+            deletedAt: DateTime.now(),
+            deletionScheduledAt: DateTime.now().add(const Duration(days: 30)),
+          );
+        });
+      });
+    }
+  }
 
   @override
   void dispose() {

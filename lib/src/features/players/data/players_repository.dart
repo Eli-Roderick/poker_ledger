@@ -16,7 +16,7 @@ class PlayersRepository {
     
     final data = await query.order('created_at', ascending: false);
     
-    // Batch fetch all linked user display names in one query
+    // Batch fetch all linked user display names and emails in one query
     final linkedUserIds = data
         .map((e) => e['linked_user_id'] as String?)
         .where((id) => id != null)
@@ -24,23 +24,31 @@ class PlayersRepository {
         .toSet()
         .toList();
     
-    Map<String, String> displayNameById = {};
+    Map<String, Map<String, String?>> profileById = {};
     if (linkedUserIds.isNotEmpty) {
       final profiles = await _client
           .from('profiles')
-          .select('id, display_name')
+          .select('id, display_name, email')
           .inFilter('id', linkedUserIds);
-      displayNameById = {
+      profileById = {
         for (final p in profiles)
-          p['id'] as String: p['display_name'] as String? ?? 'Unknown'
+          p['id'] as String: {
+            'display_name': p['display_name'] as String?,
+            'email': p['email'] as String?,
+          }
       };
     }
     
     return data.map((e) {
       final linkedUserId = e['linked_user_id'] as String?;
+      final profile = linkedUserId != null ? profileById[linkedUserId] : null;
+      // Use profile email for linked players if player email is not set
+      final playerEmail = e['email'] as String?;
+      final profileEmail = profile?['email'];
       return Player.fromMap({
         ...e,
-        'linked_user_display_name': linkedUserId != null ? displayNameById[linkedUserId] : null,
+        'email': playerEmail?.isNotEmpty == true ? playerEmail : profileEmail,
+        'linked_user_display_name': profile?['display_name'] ?? 'Unknown',
       });
     }).toList();
   }

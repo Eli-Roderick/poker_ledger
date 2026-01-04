@@ -125,47 +125,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
     );
     
     if (result == true) {
-      await _restoreAccount();
-    }
-  }
-  
-  Future<void> _restoreAccount() async {
-    if (_deletedAccountInfo == null) return;
-    
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    
-    if (password.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please enter your password to restore your account';
-      });
-      return;
-    }
-    
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-    
-    try {
-      final authRepo = ref.read(authRepositoryProvider);
-      await authRepo.restoreDeletedAccount(email, password);
-      
+      // Navigate to login screen with email pre-filled and restore prompt
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account restored! Please sign in.')),
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => LoginScreen(
+              initialEmail: _emailController.text.trim(),
+              showRestorePrompt: true,
+            ),
+          ),
         );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
       }
     }
   }

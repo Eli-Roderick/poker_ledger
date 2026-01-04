@@ -181,6 +181,8 @@ class ProfileScreen extends ConsumerWidget {
               
               if (confirmed == true) {
                 await ref.read(authRepositoryProvider).signOut();
+                // Invalidate providers to ensure clean state
+                ref.invalidate(authStateProvider);
               }
             },
             icon: const Icon(Icons.logout),
