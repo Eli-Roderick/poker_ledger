@@ -93,16 +93,25 @@ class UserSearchResult {
   final String id;
   final String? displayName;
   final String? email;
+  
+  /// If this user was previously added as a player but deactivated,
+  /// this contains the player ID for reactivation
+  final int? deactivatedPlayerId;
+  
+  /// True if this user has a deactivated player entry
+  bool get isDeactivated => deactivatedPlayerId != null;
 
   const UserSearchResult({
     required this.id,
     this.displayName,
     this.email,
+    this.deactivatedPlayerId,
   });
 
-  factory UserSearchResult.fromMap(Map<String, dynamic> map) => UserSearchResult(
+  factory UserSearchResult.fromMap(Map<String, dynamic> map, {int? deactivatedPlayerId}) => UserSearchResult(
         id: map['id'] as String,
         displayName: map['display_name'] as String?,
         email: map['email'] as String?,
+        deactivatedPlayerId: deactivatedPlayerId,
       );
 }

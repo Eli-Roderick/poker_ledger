@@ -67,6 +67,15 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
+    // Check if account is deleted before allowing sign in
+    final deletedAccount = await checkDeletedAccount(email);
+    if (deletedAccount != null) {
+      throw AccountDeletedException(
+        'This account has been deleted and is scheduled for permanent removal in ${deletedAccount.daysRemaining} days.',
+        deletedAccount,
+      );
+    }
+    
     return await _client.auth.signInWithPassword(
       email: email,
       password: password,
@@ -104,4 +113,15 @@ class DeletedAccountInfo {
     final now = DateTime.now();
     return deletionScheduledAt.difference(now).inDays;
   }
+}
+
+/// Exception thrown when trying to sign in to a deleted account
+class AccountDeletedException implements Exception {
+  final String message;
+  final DeletedAccountInfo accountInfo;
+  
+  const AccountDeletedException(this.message, this.accountInfo);
+  
+  @override
+  String toString() => message;
 }

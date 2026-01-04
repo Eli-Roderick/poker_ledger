@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:poker_ledger/src/features/groups/data/group_providers.dart';
 import 'package:poker_ledger/src/features/groups/domain/group_models.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
@@ -93,21 +94,33 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
   }
 
   Widget _buildMembersList(List<GroupMember> members) {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final playersAsync = ref.watch(playersListProvider);
+    
+    // Get set of linked user IDs from current user's player list
+    final linkedUserIds = playersAsync.maybeWhen(
+      data: (players) => players.map((p) => p.linkedUserId).whereType<String>().toSet(),
+      orElse: () => <String>{},
+    );
+    
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: members.length,
       itemBuilder: (context, index) {
         final member = members[index];
+        final isCurrentUser = member.oderId == currentUserId;
+        final isInPlayerList = linkedUserIds.contains(member.oderId);
+        
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: member.isOwner
                 ? Theme.of(context).colorScheme.primaryContainer
-                : Colors.grey.shade200,
+                : Theme.of(context).colorScheme.surfaceContainerHighest,
             child: Icon(
               Icons.person,
               color: member.isOwner
                   ? Theme.of(context).colorScheme.primary
-                  : Colors.grey,
+                  : Theme.of(context).colorScheme.outline,
             ),
           ),
           title: Row(
@@ -129,21 +142,93 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                         ),
                   ),
                 ),
+              if (isCurrentUser)
+                Container(
+                  margin: const EdgeInsets.only(left: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'You',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                  ),
+                ),
             ],
           ),
           subtitle: member.email != null && member.displayName != null
               ? Text(member.email!)
               : null,
-          trailing: _group.isOwner && !member.isOwner
-              ? IconButton(
-                  icon: const Icon(Icons.remove_circle, color: Colors.red),
-                  onPressed: () => _handleMemberAction('remove', member),
-                  tooltip: 'Remove member',
-                )
-              : null,
+          trailing: _buildMemberTrailing(context, member, isCurrentUser, isInPlayerList),
         );
       },
     );
+  }
+  
+  Widget? _buildMemberTrailing(BuildContext context, GroupMember member, bool isCurrentUser, bool isInPlayerList) {
+    // Owner can remove non-owner members
+    if (_group.isOwner && !member.isOwner) {
+      return IconButton(
+        icon: const Icon(Icons.remove_circle, color: Colors.red),
+        onPressed: () => _handleMemberAction('remove', member),
+        tooltip: 'Remove member',
+      );
+    }
+    
+    // Show "Add to players" button for other members not in player list
+    if (!isCurrentUser && !isInPlayerList) {
+      return TextButton.icon(
+        onPressed: () => _addMemberToPlayers(member),
+        icon: const Icon(Icons.person_add, size: 18),
+        label: const Text('Add'),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+      );
+    }
+    
+    // Show checkmark if already in player list
+    if (!isCurrentUser && isInPlayerList) {
+      return Icon(
+        Icons.check_circle,
+        color: Theme.of(context).colorScheme.primary,
+        size: 20,
+      );
+    }
+    
+    return null;
+  }
+  
+  Future<void> _addMemberToPlayers(GroupMember member) async {
+    try {
+      final repo = ref.read(playersRepositoryProvider);
+      final result = await repo.addOrReactivateLinkedUser(
+        userId: member.oderId,
+        displayName: member.displayName ?? 'Unknown',
+        email: member.email,
+      );
+      
+      // Refresh players list
+      ref.invalidate(playersListProvider);
+      
+      if (mounted) {
+        final message = result.isNew 
+            ? '${member.displayName ?? "User"} added to your players'
+            : '${member.displayName ?? "User"} reactivated in your players';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _handleMenuAction(String action) async {

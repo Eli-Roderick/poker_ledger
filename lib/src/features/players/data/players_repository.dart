@@ -114,20 +114,35 @@ class PlayersRepository {
     }).eq('id', playerId).eq('user_id', _client.auth.currentUser!.id);
   }
 
-  /// Search for users by email or display name, excluding users already added as players
+  /// Search for users by email or display name, excluding users already added as ACTIVE players
+  /// Deactivated players will still show up so users can reactivate them
   Future<List<UserSearchResult>> searchUsers(String query) async {
     if (query.trim().isEmpty) return [];
     
-    // Get all linked_user_ids for current user's players to exclude them
-    final existingPlayers = await _client
+    // Get all linked_user_ids for current user's ACTIVE players to exclude them
+    final existingActivePlayers = await _client
         .from('players')
         .select('linked_user_id')
         .eq('user_id', _client.auth.currentUser!.id)
+        .eq('active', true)
         .not('linked_user_id', 'is', null);
     
-    final existingLinkedIds = existingPlayers
+    final activeLinkedIds = existingActivePlayers
         .map((e) => e['linked_user_id'] as String)
         .toSet();
+    
+    // Get deactivated players that match the search to show reactivation option
+    final deactivatedPlayers = await _client
+        .from('players')
+        .select('id, linked_user_id')
+        .eq('user_id', _client.auth.currentUser!.id)
+        .eq('active', false)
+        .not('linked_user_id', 'is', null);
+    
+    final deactivatedLinkedIds = {
+      for (final p in deactivatedPlayers)
+        p['linked_user_id'] as String: p['id'] as int
+    };
     
     final searchTerm = '%${query.toLowerCase().trim()}%';
     
@@ -135,12 +150,17 @@ class PlayersRepository {
         .from('profiles')
         .select('id, display_name, email')
         .or('email.ilike.$searchTerm,display_name.ilike.$searchTerm')
-        .limit(20);  // Fetch more to account for filtering
+        .limit(20);
     
-    // Filter out users already added as players
+    // Filter out users already added as ACTIVE players
+    // But include deactivated players with a flag
     return (data as List)
-        .where((e) => !existingLinkedIds.contains(e['id'] as String))
-        .map((e) => UserSearchResult.fromMap(e))
+        .where((e) => !activeLinkedIds.contains(e['id'] as String))
+        .map((e) {
+          final userId = e['id'] as String;
+          final deactivatedPlayerId = deactivatedLinkedIds[userId];
+          return UserSearchResult.fromMap(e, deactivatedPlayerId: deactivatedPlayerId);
+        })
         .take(10)
         .toList();
   }
@@ -215,5 +235,59 @@ class PlayersRepository {
       ...data,
       'linked_user_display_name': linkedUserDisplayName,
     });
+  }
+
+  /// Check if a user is already in the current user's player list
+  /// Returns the player if found (including deactivated), null otherwise
+  Future<Player?> getPlayerByLinkedUserId(String linkedUserId) async {
+    final data = await _client
+        .from('players')
+        .select()
+        .eq('user_id', _client.auth.currentUser!.id)
+        .eq('linked_user_id', linkedUserId)
+        .maybeSingle();
+    
+    if (data == null) return null;
+    
+    // Get display name
+    final profile = await _client
+        .from('profiles')
+        .select('display_name')
+        .eq('id', linkedUserId)
+        .maybeSingle();
+    
+    return Player.fromMap({
+      ...data,
+      'linked_user_display_name': profile?['display_name'] as String?,
+    });
+  }
+
+  /// Add a user as a player, or reactivate if already exists but deactivated
+  /// Returns the player and whether it was newly created (false = reactivated)
+  Future<({Player player, bool isNew})> addOrReactivateLinkedUser({
+    required String userId,
+    required String displayName,
+    String? email,
+  }) async {
+    // Check if already exists
+    final existing = await getPlayerByLinkedUserId(userId);
+    
+    if (existing != null) {
+      // Reactivate if deactivated
+      if (!existing.active && existing.id != null) {
+        await setActive(id: existing.id!, active: true);
+        return (player: existing.copyWith(active: true), isNew: false);
+      }
+      // Already active - return as-is
+      return (player: existing, isNew: false);
+    }
+    
+    // Create new player
+    final player = await add(
+      name: displayName,
+      email: email,
+      linkedUserId: userId,
+    );
+    return (player: player, isNew: true);
   }
 }

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../auth/providers/app_settings_providers.dart';
 import '../../auth/data/admin_config.dart';
+import '../../theme/theme_provider.dart';
 
 /// Provider for user settings from the profiles table
 final userSettingsProvider = FutureProvider<UserSettings>((ref) async {
@@ -189,7 +190,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     
     if (result != null && result != currentTheme) {
-      await _updateSetting('theme_mode', result);
+      // Update theme provider which also persists to database
+      await ref.read(themeModeProvider.notifier).setThemeMode(result);
+      ref.invalidate(userSettingsProvider);
     }
   }
   
@@ -324,15 +327,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           })
           .eq('id', user.id);
       
-      // Sign out the user
+      // Sign out the user - this will trigger navigation to login screen
       await ref.read(authRepositoryProvider).signOut();
       
+      // Pop all screens back to root (login screen will be shown due to auth state change)
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account scheduled for deletion. You have 30 days to restore it.'),
-          ),
-        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       if (mounted) {
@@ -345,14 +345,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 }
 
 /// Tutorial screen for new users
-class TutorialScreen extends StatefulWidget {
+class TutorialScreen extends ConsumerStatefulWidget {
   const TutorialScreen({super.key});
 
   @override
-  State<TutorialScreen> createState() => _TutorialScreenState();
+  ConsumerState<TutorialScreen> createState() => _TutorialScreenState();
 }
 
-class _TutorialScreenState extends State<TutorialScreen> {
+class _TutorialScreenState extends ConsumerState<TutorialScreen> {
   int _currentStep = 0;
   
   final List<TutorialStep> _steps = [
@@ -534,11 +534,16 @@ class _TutorialScreenState extends State<TutorialScreen> {
             .update({'tutorial_completed': true})
             .eq('id', user.id);
       }
+      
+      // Invalidate providers to trigger navigation to app
+      ref.invalidate(userSettingsProvider);
     } catch (e) {
       // Ignore errors - tutorial completion is not critical
     }
     
-    if (mounted) {
+    // If shown from auth_gate (no navigator to pop), just let the provider refresh handle it
+    // If shown from settings, pop back
+    if (mounted && Navigator.of(context).canPop()) {
       Navigator.pop(context);
     }
   }

@@ -791,6 +791,33 @@ class _AddPlayerSheetState extends ConsumerState<_AddPlayerSheet> {
     });
   }
 
+  Future<void> _reactivatePlayer(UserSearchResult user) async {
+    if (user.deactivatedPlayerId == null) return;
+    
+    try {
+      await ref.read(playersRepositoryProvider).setActive(
+        id: user.deactivatedPlayerId!,
+        active: true,
+      );
+      
+      // Refresh players list
+      ref.invalidate(playersListProvider);
+      
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${user.displayName ?? "Player"} reactivated')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   void _addPlayer() {
     if (_selectedUser == null) return;
     final name = _nameCtrl.text.trim().isEmpty 
@@ -946,20 +973,46 @@ class _AddPlayerSheetState extends ConsumerState<_AddPlayerSheet> {
                     itemCount: _searchResults.length,
                     itemBuilder: (context, index) {
                       final user = _searchResults[index];
+                      final isDeactivated = user.isDeactivated;
                       return Card(
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            backgroundColor: isDeactivated
+                                ? Colors.orange.withValues(alpha: 0.2)
+                                : Theme.of(context).colorScheme.primaryContainer,
                             child: Icon(
-                              Icons.person,
-                              color: Theme.of(context).colorScheme.primary,
+                              isDeactivated ? Icons.person_off : Icons.person,
+                              color: isDeactivated
+                                  ? Colors.orange
+                                  : Theme.of(context).colorScheme.primary,
                             ),
                           ),
-                          title: Text(user.displayName ?? 'No name'),
+                          title: Row(
+                            children: [
+                              Expanded(child: Text(user.displayName ?? 'No name')),
+                              if (isDeactivated)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Text(
+                                    'Deactivated',
+                                    style: TextStyle(fontSize: 10, color: Colors.orange),
+                                  ),
+                                ),
+                            ],
+                          ),
                           subtitle: Text(user.email ?? ''),
-                          trailing: const Icon(Icons.add_circle_outline),
-                          onTap: () => _selectUser(user),
+                          trailing: isDeactivated
+                              ? TextButton(
+                                  onPressed: () => _reactivatePlayer(user),
+                                  child: const Text('Reactivate'),
+                                )
+                              : const Icon(Icons.add_circle_outline),
+                          onTap: isDeactivated ? null : () => _selectUser(user),
                         ),
                       );
                     },

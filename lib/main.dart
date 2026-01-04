@@ -4,19 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'src/auth/presentation/auth_gate.dart';
 import 'src/theme/app_theme.dart';
+import 'src/theme/theme_provider.dart';
 import 'src/utils/web_keyboard_fix.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Set system UI colors to match app theme
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    systemNavigationBarColor: Color(0xFF111315),
-    systemNavigationBarDividerColor: Color(0xFF111315),
-    systemNavigationBarIconBrightness: Brightness.light,
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-  ));
   
   // Enable edge-to-edge mode for better keyboard handling
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -29,17 +21,31 @@ void main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
-  // Cache theme to avoid rebuilding on every frame
-  static final _theme = AppTheme.theme();
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+    
+    // Update system UI based on theme
+    final isDark = themeMode == ThemeMode.dark || 
+        (themeMode == ThemeMode.system && 
+         MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+    
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      systemNavigationBarColor: isDark ? const Color(0xFF111315) : Colors.white,
+      systemNavigationBarDividerColor: isDark ? const Color(0xFF111315) : Colors.white,
+      systemNavigationBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+    ));
+    
     return MaterialApp(
       title: 'Poker Ledger',
-      theme: _theme,
+      theme: AppTheme.lightTheme(),
+      darkTheme: AppTheme.darkTheme(),
+      themeMode: themeMode,
       home: const WebKeyboardFix(child: AuthGate()),
       debugShowCheckedModeBanner: false,
     );

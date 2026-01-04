@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/auth_providers.dart';
 import '../utils/auth_error_formatter.dart';
+import '../data/auth_repository.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -19,6 +20,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
   bool _obscurePassword = true;
+  DeletedAccountInfo? _deletedAccountInfo;
 
   @override
   void dispose() {
@@ -33,6 +35,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _deletedAccountInfo = null;
     });
 
     try {
@@ -41,9 +44,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+    } on AccountDeletedException catch (e) {
+      setState(() {
+        _errorMessage = e.message;
+        _deletedAccountInfo = e.accountInfo;
+      });
     } catch (e) {
       setState(() {
         _errorMessage = formatAuthError(e);
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+  
+  Future<void> _restoreAccount() async {
+    if (_deletedAccountInfo == null) return;
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    
+    try {
+      final authRepo = ref.read(authRepositoryProvider);
+      await authRepo.restoreDeletedAccount(_deletedAccountInfo!.userId);
+      
+      setState(() {
+        _deletedAccountInfo = null;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account restored! You can now sign in.')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to restore account: $e';
       });
     } finally {
       if (mounted) {
@@ -95,13 +137,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       padding: const EdgeInsets.all(12),
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.red.shade50,
+                        color: _deletedAccountInfo != null 
+                            ? Colors.orange.shade50 
+                            : Colors.red.shade50,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.red.shade200),
+                        border: Border.all(
+                          color: _deletedAccountInfo != null 
+                              ? Colors.orange.shade200 
+                              : Colors.red.shade200,
+                        ),
                       ),
-                      child: Text(
-                        _errorMessage!,
-                        style: TextStyle(color: Colors.red.shade700),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _errorMessage!,
+                            style: TextStyle(
+                              color: _deletedAccountInfo != null 
+                                  ? Colors.orange.shade700 
+                                  : Colors.red.shade700,
+                            ),
+                          ),
+                          if (_deletedAccountInfo != null) ...[
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton(
+                                onPressed: _isLoading ? null : _restoreAccount,
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade700,
+                                  side: BorderSide(color: Colors.orange.shade400),
+                                ),
+                                child: const Text('Restore Account'),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   TextFormField(
