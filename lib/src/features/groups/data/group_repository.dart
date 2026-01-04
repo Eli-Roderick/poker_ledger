@@ -325,10 +325,16 @@ class GroupRepository {
       throw Exception('You can only remove sessions you shared or if you are the group owner');
     }
     
-    await _client
-        .from('session_groups')
-        .delete()
-        .eq('session_id', sessionId)
-        .eq('group_id', groupId);
+    // Delete the session_group entry
+    // Note: RLS policy must allow this delete based on shared_by or group ownership
+    try {
+      await _client
+          .from('session_groups')
+          .delete()
+          .eq('session_id', sessionId)
+          .eq('group_id', groupId);
+    } catch (e) {
+      throw Exception('Failed to remove session from group: $e');
+    }
   }
 }

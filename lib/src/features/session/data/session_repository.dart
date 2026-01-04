@@ -6,9 +6,11 @@ class SessionRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
   Future<Session> getOrCreateOpenSession() async {
+    // Only get sessions owned by the current user
     final data = await _client
         .from('sessions')
         .select()
+        .eq('user_id', _client.auth.currentUser!.id)
         .eq('finalized', false)
         .order('started_at', ascending: false)
         .limit(1)
@@ -45,7 +47,12 @@ class SessionRepository {
   }
 
   Future<void> deleteSession(int sessionId) async {
-    await _client.from('sessions').delete().eq('id', sessionId);
+    // Only delete sessions owned by the current user
+    await _client
+        .from('sessions')
+        .delete()
+        .eq('id', sessionId)
+        .eq('user_id', _client.auth.currentUser!.id);
   }
 
   Future<void> deleteSessionPlayer(int sessionPlayerId) async {
@@ -65,18 +72,29 @@ class SessionRepository {
   }
 
   Future<void> renameSession({required int sessionId, required String? name}) async {
-    await _client.from('sessions').update({'name': name}).eq('id', sessionId);
+    // Only update sessions owned by the current user
+    await _client
+        .from('sessions')
+        .update({'name': name})
+        .eq('id', sessionId)
+        .eq('user_id', _client.auth.currentUser!.id);
   }
 
   Future<void> finalizeSession(int sessionId) async {
+    // Only finalize sessions owned by the current user
     await _client.from('sessions').update({
       'finalized': true,
       'ended_at': DateTime.now().toIso8601String(),
-    }).eq('id', sessionId).eq('finalized', false);
+    }).eq('id', sessionId).eq('finalized', false).eq('user_id', _client.auth.currentUser!.id);
   }
 
   Future<List<Session>> listSessions() async {
-    final data = await _client.from('sessions').select().order('started_at', ascending: false);
+    // Only return sessions owned by the current user
+    final data = await _client
+        .from('sessions')
+        .select()
+        .eq('user_id', _client.auth.currentUser!.id)
+        .order('started_at', ascending: false);
     return (data as List).map((e) => Session.fromMap(e)).toList();
   }
 
@@ -227,6 +245,8 @@ class SessionRepository {
   }
 
   Future<Session?> getSessionById(int id) async {
+    // RLS will handle access control, but we still query by id
+    // User can access if they own it or it's shared to a group they belong to
     final data = await _client.from('sessions').select().eq('id', id).maybeSingle();
     if (data == null) return null;
     return Session.fromMap(data);
@@ -279,7 +299,11 @@ class SessionRepository {
   }
 
   Future<List<Map<String, Object?>>> listQuickAddSumsByPlayer() async {
-    final data = await _client.from('quick_add_entries').select('player_id, amount_cents');
+    // Only get quick add entries for the current user
+    final data = await _client
+        .from('quick_add_entries')
+        .select('player_id, amount_cents')
+        .eq('user_id', _client.auth.currentUser!.id);
     
     // Group by player_id and sum
     final Map<int, int> sums = {};

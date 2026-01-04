@@ -255,18 +255,20 @@ class AnalyticsScreen extends ConsumerWidget {
                           ],
                         ),
                         if (canRemove) ...[
-                          const SizedBox(width: 16),
+                          const SizedBox(width: 8),
                           IconButton(
                             icon: const Icon(Icons.remove_circle_outline),
                             onPressed: () => _showRemoveSessionDialog(context, ref, s.session.id!, state.filters.groupId!),
                             tooltip: 'Remove from group',
                             iconSize: 20,
-                            padding: const EdgeInsets.only(right: 8),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
                             color: Theme.of(context).colorScheme.error,
                           ),
                         ],
                       ],
                     ),
+                    contentPadding: const EdgeInsets.only(left: 16, right: 16),
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(

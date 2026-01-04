@@ -64,11 +64,21 @@ class PlayersRepository {
   }
 
   Future<void> delete(int id) async {
-    await _client.from('players').delete().eq('id', id);
+    // Only delete players owned by the current user
+    await _client
+        .from('players')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', _client.auth.currentUser!.id);
   }
 
   Future<void> setActive({required int id, required bool active}) async {
-    await _client.from('players').update({'active': active}).eq('id', id);
+    // Only update players owned by the current user
+    await _client
+        .from('players')
+        .update({'active': active})
+        .eq('id', id)
+        .eq('user_id', _client.auth.currentUser!.id);
   }
 
   Future<Player> update({
@@ -78,27 +88,30 @@ class PlayersRepository {
     String? phone,
     String? notes,
   }) async {
+    // Only update players owned by the current user
     final data = await _client.from('players').update({
       'name': name,
       'email': email,
       'phone': phone,
       'notes': notes,
-    }).eq('id', id).select().single();
+    }).eq('id', id).eq('user_id', _client.auth.currentUser!.id).select().single();
     return Player.fromMap(data);
   }
 
   /// Link a player to a user account
   Future<void> linkToUser({required int playerId, required String userId}) async {
+    // Only update players owned by the current user
     await _client.from('players').update({
       'linked_user_id': userId,
-    }).eq('id', playerId);
+    }).eq('id', playerId).eq('user_id', _client.auth.currentUser!.id);
   }
 
   /// Unlink a player from a user account
   Future<void> unlinkUser({required int playerId}) async {
+    // Only update players owned by the current user
     await _client.from('players').update({
       'linked_user_id': null,
-    }).eq('id', playerId);
+    }).eq('id', playerId).eq('user_id', _client.auth.currentUser!.id);
   }
 
   /// Search for users by email or display name, excluding users already added as players

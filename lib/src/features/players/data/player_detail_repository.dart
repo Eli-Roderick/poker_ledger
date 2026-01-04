@@ -13,23 +13,33 @@ class PlayerDetailRepository {
   }
 
   Future<List<Map<String, Object?>>> listQuickAdds(int playerId) async {
+    // Only get quick adds for the current user
     final data = await _client
         .from('quick_add_entries')
         .select()
+        .eq('user_id', _client.auth.currentUser!.id)
         .eq('player_id', playerId)
         .order('created_at', ascending: false);
     return List<Map<String, Object?>>.from(data);
   }
 
   Future<void> deleteQuickAdd(int id) async {
-    await _client.from('quick_add_entries').delete().eq('id', id);
+    // RLS will ensure user can only delete their own entries
+    await _client
+        .from('quick_add_entries')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', _client.auth.currentUser!.id);
   }
 
   Future<List<Map<String, Object?>>> listPlayerSessionNets(int playerId) async {
+    // Only get session data for sessions owned by the current user
+    // RLS on session_players will filter based on session ownership
     final data = await _client
         .from('session_players')
-        .select('session_id, buy_in_cents_total, cash_out_cents, sessions(id, name, started_at)')
-        .eq('player_id', playerId);
+        .select('session_id, buy_in_cents_total, cash_out_cents, sessions!inner(id, name, started_at, user_id)')
+        .eq('player_id', playerId)
+        .eq('sessions.user_id', _client.auth.currentUser!.id);
     
     return (data as List).map((row) {
       final session = row['sessions'] as Map<String, dynamic>?;
@@ -51,10 +61,12 @@ class PlayerDetailRepository {
   }
 
   Future<int> totalBuyInCents(int playerId) async {
+    // Only get data for sessions owned by the current user
     final data = await _client
         .from('session_players')
-        .select('buy_in_cents_total')
-        .eq('player_id', playerId);
+        .select('buy_in_cents_total, sessions!inner(user_id)')
+        .eq('player_id', playerId)
+        .eq('sessions.user_id', _client.auth.currentUser!.id);
     
     int total = 0;
     for (final row in data) {
