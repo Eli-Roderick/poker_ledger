@@ -312,8 +312,10 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
               ),
             ),
             const SizedBox(width: 12),
-            // Filter icon in its own bubble
+            // Filter icon in its own bubble - match height with dropdown
             Container(
+              height: 48, // Match dropdown height
+              width: 48,
               decoration: BoxDecoration(
                 color: hasDateFilter 
                     ? Theme.of(context).colorScheme.primaryContainer 

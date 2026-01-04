@@ -3,13 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/providers/auth_providers.dart';
-import '../../auth/providers/app_settings_providers.dart';
-import '../../auth/data/admin_config.dart';
 import '../../features/session/data/session_providers.dart';
 import '../../features/session/domain/session_models.dart';
 import '../../features/session/presentation/session_summary_screen.dart';
 import '../../features/profile/data/profile_providers.dart';
 import '../../features/help/presentation/help_screen.dart';
+import 'settings_screen.dart';
 
 final myLinkedSessionsProvider = FutureProvider<List<SessionWithOwner>>((ref) async {
   // Watch auth state to auto-refresh when user changes
@@ -36,6 +35,15 @@ class ProfileScreen extends ConsumerWidget {
           tooltip: 'Help',
         ),
         title: const Text('Profile'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+            tooltip: 'Settings',
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(24),
@@ -88,64 +96,6 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-          // Admin section - only visible to admins
-          if (AdminConfig.isAdmin(user?.id)) ...[
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.admin_panel_settings, 
-                            color: Theme.of(context).colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Admin Settings',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Consumer(
-                      builder: (context, ref, _) {
-                        final maintenanceAsync = ref.watch(maintenanceModeProvider);
-                        return maintenanceAsync.when(
-                          loading: () => const ListTile(
-                            title: Text('Maintenance Mode'),
-                            trailing: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          ),
-                          error: (e, _) => ListTile(
-                            title: const Text('Maintenance Mode'),
-                            subtitle: Text('Error: $e'),
-                          ),
-                          data: (enabled) => SwitchListTile(
-                            title: const Text('Maintenance Mode'),
-                            subtitle: Text(enabled 
-                                ? 'Only admins can access the app' 
-                                : 'All users can access the app'),
-                            value: enabled,
-                            onChanged: (value) {
-                              ref.read(maintenanceModeProvider.notifier).toggle();
-                            },
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
           // Pending follow requests section
           _buildPendingFollowRequests(context, ref),
           const SizedBox(height: 24),

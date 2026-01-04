@@ -292,12 +292,27 @@ class ProfileRepository {
 
   // ============ FOLLOW MANAGEMENT ============
 
+  /// Check if a user has a public profile (auto-accept follows)
+  Future<bool> isUserPublic(String userId) async {
+    final data = await _client
+        .from('profiles')
+        .select('is_public')
+        .eq('id', userId)
+        .maybeSingle();
+    return data?['is_public'] as bool? ?? false;
+  }
+
   /// Send a follow request to a user
+  /// If the target user has a public profile, the follow is auto-accepted
   Future<Follow> sendFollowRequest(String targetUserId) async {
+    // Check if target user has a public profile
+    final isPublic = await isUserPublic(targetUserId);
+    final status = isPublic ? 'accepted' : 'pending';
+    
     final data = await _client.from('follows').insert({
       'follower_id': _currentUserId,
       'following_id': targetUserId,
-      'status': 'pending',
+      'status': status,
     }).select().single();
     return Follow.fromMap(data);
   }
