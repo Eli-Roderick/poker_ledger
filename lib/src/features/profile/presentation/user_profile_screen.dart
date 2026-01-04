@@ -6,6 +6,7 @@ import '../data/profile_providers.dart';
 import '../domain/profile_models.dart';
 import '../../session/presentation/session_summary_screen.dart';
 import '../../players/data/players_providers.dart';
+import '../../help/presentation/help_screen.dart';
 import 'user_history_screen.dart';
 
 class UserProfileScreen extends ConsumerStatefulWidget {
@@ -47,6 +48,10 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -67,6 +72,13 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
               ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => context.showHelp(HelpPage.playerProfile),
+            tooltip: 'Help',
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -283,69 +295,44 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Text('Error: $e'),
       data: (stats) {
-        final netColor = stats.netProfitCents == 0
-            ? Theme.of(context).colorScheme.outline
-            : (stats.netProfitCents > 0 ? Colors.green : Colors.red);
+        Color netColor(int cents) {
+          if (cents == 0) return Theme.of(context).colorScheme.outline;
+          return cents > 0 ? Colors.green : Colors.red;
+        }
 
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Summary',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 16),
-                _InfoRow(
-                  icon: Icons.casino_outlined,
-                  label: 'Sessions Played',
-                  value: stats.totalSessions.toString(),
-                ),
-                const Divider(),
-                _InfoRow(
-                  icon: Icons.trending_up,
-                  label: 'Win Rate',
-                  value: '${stats.winRate.toStringAsFixed(0)}%',
-                ),
-                const Divider(),
-                _InfoRow(
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: 'Total Buy-ins',
-                  value: _currency.format(stats.totalBuyInsCents / 100),
-                ),
-                const Divider(),
-                _InfoRow(
-                  icon: Icons.payments_outlined,
-                  label: 'Total Cash-outs',
-                  value: _currency.format(stats.totalCashOutsCents / 100),
-                ),
-                const Divider(),
-                _InfoRow(
-                  icon: stats.netProfitCents >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
-                  label: 'Net Profit/Loss',
-                  value: _currency.format(stats.netProfitCents / 100),
-                  valueColor: netColor,
-                ),
-                const Divider(),
-                _InfoRow(
-                  icon: Icons.emoji_events_outlined,
-                  label: 'Best Session',
-                  value: _currency.format(stats.biggestWinCents / 100),
-                  valueColor: stats.biggestWinCents > 0 ? Colors.green : null,
-                ),
-                const Divider(),
-                _InfoRow(
-                  icon: Icons.trending_down,
-                  label: 'Worst Session',
-                  value: _currency.format(stats.biggestLossCents / 100),
-                  valueColor: stats.biggestLossCents < 0 ? Colors.red : null,
-                ),
-              ],
-            ),
+        Widget stat(String label, String value, {Color? valueColor}) {
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline)),
+              const SizedBox(height: 2),
+              Text(value, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: valueColor)),
+            ],
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Summary', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 20,
+                runSpacing: 12,
+                children: [
+                  stat('Sessions', stats.totalSessions.toString()),
+                  stat('Total buy-ins', _currency.format(stats.totalBuyInsCents / 100)),
+                  stat('Total cash-outs', _currency.format(stats.totalCashOutsCents / 100)),
+                  stat('Total net', _currency.format(stats.netProfitCents / 100), valueColor: netColor(stats.netProfitCents)),
+                  stat('Win rate', '${stats.winRate.toStringAsFixed(0)}%'),
+                  stat('Best session', _currency.format(stats.biggestWinCents / 100), valueColor: stats.biggestWinCents > 0 ? Colors.green : null),
+                  stat('Worst session', _currency.format(stats.biggestLossCents / 100), valueColor: stats.biggestLossCents < 0 ? Colors.red : null),
+                ],
+              ),
+            ],
           ),
         );
       },
@@ -617,51 +604,5 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         }
       }
     }
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  const _InfoRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.grey),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey,
-                      ),
-                ),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: valueColor,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

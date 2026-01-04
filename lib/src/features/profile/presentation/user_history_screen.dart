@@ -39,7 +39,6 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final params = UserProfileParams(userId: widget.userId, groupId: _selectedGroupId);
-    final statsAsync = ref.watch(userProfileStatsProvider(params));
     final sessionsAsync = ref.watch(userSessionsProvider(params));
     final mutualGroupsAsync = ref.watch(mutualGroupsProvider(widget.userId));
 
@@ -54,56 +53,60 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Group filter dropdown
-          _buildGroupFilter(context, mutualGroupsAsync),
+      body: sessionsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+        data: (sessions) {
+          // Apply all filters to get the filtered list
+          var filteredSessions = sessions.toList();
           
-          // Stats summary
-          _buildStatsSummary(context, statsAsync),
+          // Filter by shared only if needed
+          if (widget.showSharedOnly) {
+            filteredSessions = filteredSessions.where((s) => s.groupId != null).toList();
+          }
           
-          // Sessions list
-          Expanded(
-            child: sessionsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (sessions) {
-                var filteredSessions = sessions;
-                
-                // Filter by shared only if needed
-                if (widget.showSharedOnly) {
-                  filteredSessions = filteredSessions.where((s) => s.groupId != null).toList();
-                }
-                
-                // Filter by date range if set
-                if (_startDate != null) {
-                  filteredSessions = filteredSessions.where((s) => !s.startedAt.isBefore(_startDate!)).toList();
-                }
-                if (_endDate != null) {
-                  filteredSessions = filteredSessions.where((s) => !s.startedAt.isAfter(_endDate!.add(const Duration(days: 1)))).toList();
-                }
-                
-                if (filteredSessions.isEmpty) {
-                  return _buildEmptyState(context);
-                }
-                
-                return RefreshIndicator(
-                  onRefresh: () async {
-                    ref.invalidate(userSessionsProvider(params));
-                    ref.invalidate(userProfileStatsProvider(params));
-                  },
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredSessions.length,
-                    itemBuilder: (context, index) {
-                      return _buildSessionTile(context, filteredSessions[index]);
-                    },
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
+          // Filter by date range if set
+          if (_startDate != null) {
+            filteredSessions = filteredSessions.where((s) => !s.startedAt.isBefore(_startDate!)).toList();
+          }
+          if (_endDate != null) {
+            filteredSessions = filteredSessions.where((s) => !s.startedAt.isAfter(_endDate!.add(const Duration(days: 1)))).toList();
+          }
+          
+          // Calculate stats from filtered sessions
+          final totalSessions = filteredSessions.length;
+          final totalNetCents = filteredSessions.fold<int>(0, (sum, s) => sum + s.netCents);
+          final wins = filteredSessions.where((s) => s.netCents > 0).length;
+          final winRate = totalSessions > 0 ? (wins / totalSessions * 100) : 0.0;
+          
+          return Column(
+            children: [
+              // Group filter dropdown
+              _buildGroupFilter(context, mutualGroupsAsync),
+              
+              // Stats summary - calculated from filtered sessions
+              _buildFilteredStatsSummary(context, totalSessions, winRate, totalNetCents),
+              
+              // Sessions list
+              Expanded(
+                child: filteredSessions.isEmpty
+                    ? _buildEmptyState(context)
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          ref.invalidate(userSessionsProvider(params));
+                        },
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: filteredSessions.length,
+                          itemBuilder: (context, index) {
+                            return _buildSessionTile(context, filteredSessions[index]);
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -248,35 +251,29 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     return showDatePicker(context: context, initialDate: initial, firstDate: first, lastDate: last);
   }
 
-  Widget _buildStatsSummary(BuildContext context, AsyncValue<UserProfileStats> statsAsync) {
-    return statsAsync.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (stats) {
-        final netColor = stats.netProfitCents == 0
-            ? Theme.of(context).colorScheme.outline
-            : (stats.netProfitCents > 0 ? Colors.green : Colors.red);
+  Widget _buildFilteredStatsSummary(BuildContext context, int totalSessions, double winRate, int totalNetCents) {
+    final netColor = totalNetCents == 0
+        ? Theme.of(context).colorScheme.outline
+        : (totalNetCents > 0 ? Colors.green : Colors.red);
 
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildMiniStat(context, 'Sessions', totalSessions.toString()),
+          _buildMiniStat(context, 'Win Rate', '${winRate.toStringAsFixed(0)}%'),
+          _buildMiniStat(
+            context,
+            'Net',
+            _currency.format(totalNetCents / 100),
+            valueColor: netColor,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildMiniStat(context, 'Sessions', stats.totalSessions.toString()),
-              _buildMiniStat(context, 'Win Rate', '${stats.winRate.toStringAsFixed(0)}%'),
-              _buildMiniStat(
-                context,
-                'Net',
-                _currency.format(stats.netProfitCents / 100),
-                valueColor: netColor,
-              ),
-            ],
-          ),
-        );
-      },
+        ],
+      ),
     );
   }
 

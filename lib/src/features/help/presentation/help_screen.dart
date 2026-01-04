@@ -4,9 +4,11 @@ enum HelpPage {
   sessions,
   sessionDetail,
   players,
+  playerProfile,
   groups,
   groupDetail,
   analytics,
+  profile,
 }
 
 class HelpScreen extends StatelessWidget {
@@ -84,10 +86,10 @@ class HelpScreen extends StatelessWidget {
           title: 'Players',
           description: 'Your poker buddies. Link them to accounts so their stats sync across sessions.',
           points: [
-            'Tap + to add someone new',
-            'Search by email or name to link accounts',
-            'Linked players show a filled avatar',
-            'Tap any player to see their stats',
+            'Tap + to add a new player',
+            'Search by email to link to an existing account',
+            'Linked players show a link icon and can be tapped to view their profile',
+            'Guest players (not linked) can be edited by tapping them',
             'Use the eye icon to show/hide inactive players',
           ],
         );
@@ -111,9 +113,9 @@ class HelpScreen extends StatelessWidget {
           description: 'Manage your group members here.',
           points: [
             'See all members and who owns the group',
-            'Owners can invite new members',
+            'Owners can invite new members by email',
             'Owners can remove members from the group',
-            'Remove members or leave the group',
+            'Non-owners can leave the group',
           ],
         );
       
@@ -122,11 +124,36 @@ class HelpScreen extends StatelessWidget {
           title: 'Analytics',
           description: 'See how you and your friends are doing. Filter by date or group.',
           points: [
-            'Top cards show total sessions, players, and profit/loss',
-            'Tap the group dropdown to switch between your sessions and group sessions',
-            'Use filters to narrow down by date',
-            'Tap any session to see the full breakdown',
+            'Top cards show total sessions, players, and net profit/loss',
+            'Tap the title to switch between your sessions and group sessions',
+            'Use the filter icon to narrow down by date range',
+            'Tap any player to see their detailed stats and history',
             'Export to CSV if you want the raw data',
+          ],
+        );
+      
+      case HelpPage.playerProfile:
+        return const _HelpContent(
+          title: 'Player Profile',
+          description: 'View stats for a linked player. Follow them to see their private stats.',
+          points: [
+            'Summary shows sessions, buy-ins, cash-outs, and net profit',
+            'Follow users to see stats from their private sessions',
+            'Filter by mutual groups to see shared session stats',
+            'View their recent session history',
+            'Tap any session to see the full breakdown',
+          ],
+        );
+      
+      case HelpPage.profile:
+        return const _HelpContent(
+          title: 'Your Profile',
+          description: 'Manage your account and see sessions you\'re linked to.',
+          points: [
+            'View your account info and display name',
+            'Accept or reject follow requests from other users',
+            'See sessions where you\'re a linked player',
+            'Sign out from your account',
           ],
         );
     }

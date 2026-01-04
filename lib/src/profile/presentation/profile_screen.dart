@@ -9,6 +9,7 @@ import '../../features/session/data/session_providers.dart';
 import '../../features/session/domain/session_models.dart';
 import '../../features/session/presentation/session_summary_screen.dart';
 import '../../features/profile/data/profile_providers.dart';
+import '../../features/help/presentation/help_screen.dart';
 
 final myLinkedSessionsProvider = FutureProvider<List<SessionWithOwner>>((ref) async {
   // Watch auth state to auto-refresh when user changes
@@ -29,6 +30,11 @@ class ProfileScreen extends ConsumerWidget {
     
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.help_outline),
+          onPressed: () => context.showHelp(HelpPage.profile),
+          tooltip: 'Help',
+        ),
         title: const Text('Profile'),
       ),
       body: ListView(
