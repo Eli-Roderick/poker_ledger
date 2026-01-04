@@ -6,11 +6,13 @@ class SessionRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
   Future<Session> getOrCreateOpenSession() async {
+    final userId = _client.auth.currentUser!.id;
+    
     // Only get sessions owned by the current user
     final data = await _client
         .from('sessions')
         .select()
-        .eq('user_id', _client.auth.currentUser!.id)
+        .eq('user_id', userId)
         .eq('finalized', false)
         .order('started_at', ascending: false)
         .limit(1)
@@ -18,9 +20,26 @@ class SessionRepository {
     
     if (data != null) return Session.fromMap(data);
     
+    // Generate default name for new session
+    final profile = await _client
+        .from('profiles')
+        .select('display_name')
+        .eq('id', userId)
+        .maybeSingle();
+    final displayName = profile?['display_name'] as String? ?? 'User';
+    final firstName = displayName.split(' ').first;
+    
+    final countResult = await _client
+        .from('sessions')
+        .select('id')
+        .eq('user_id', userId);
+    final gameNumber = (countResult as List).length + 1;
+    
+    final sessionName = "$firstName's Game #$gameNumber";
+    
     final newSession = await _client.from('sessions').insert({
-      'user_id': _client.auth.currentUser!.id,
-      'name': null,
+      'user_id': userId,
+      'name': sessionName,
       'finalized': false,
     }).select().single();
     return Session.fromMap(newSession);
@@ -63,9 +82,33 @@ class SessionRepository {
   }
 
   Future<Session> createSession({String? name}) async {
+    final userId = _client.auth.currentUser!.id;
+    
+    // Generate default name if not provided
+    String sessionName = name ?? '';
+    if (sessionName.isEmpty) {
+      // Get user's display name
+      final profile = await _client
+          .from('profiles')
+          .select('display_name')
+          .eq('id', userId)
+          .maybeSingle();
+      final displayName = profile?['display_name'] as String? ?? 'User';
+      final firstName = displayName.split(' ').first;
+      
+      // Count existing sessions to get the game number
+      final countResult = await _client
+          .from('sessions')
+          .select('id')
+          .eq('user_id', userId);
+      final gameNumber = (countResult as List).length + 1;
+      
+      sessionName = "$firstName's Game #$gameNumber";
+    }
+    
     final data = await _client.from('sessions').insert({
-      'user_id': _client.auth.currentUser!.id,
-      'name': name,
+      'user_id': userId,
+      'name': sessionName,
       'finalized': false,
     }).select().single();
     return Session.fromMap(data);
