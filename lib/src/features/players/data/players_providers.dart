@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/providers/auth_providers.dart';
 import 'players_repository.dart';
 import '../domain/player.dart';
 
@@ -16,6 +17,10 @@ class PlayersListNotifier extends AsyncNotifier<List<Player>> {
 
   @override
   Future<List<Player>> build() async {
+    // Watch auth state to auto-refresh when user changes
+    final user = ref.watch(currentUserProvider);
+    if (user == null) return [];
+    
     _repo = ref.read(playersRepositoryProvider);
     return _repo.getAll(includeDeactivated: _showDeactivated, deactivatedOnly: _showDeactivated);
   }

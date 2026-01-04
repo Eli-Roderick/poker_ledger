@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../auth/providers/auth_providers.dart';
 import '../../session/data/session_repository.dart';
 import '../../session/domain/session_models.dart';
 import '../../groups/data/group_providers.dart';
@@ -98,6 +99,15 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
 
   @override
   Future<AnalyticsState> build() async {
+    // Watch auth state to auto-refresh when user changes
+    final user = ref.watch(currentUserProvider);
+    if (user == null) {
+      return const AnalyticsState(
+        filters: AnalyticsFilters(),
+        players: [],
+        sessions: [],
+      );
+    }
     return _load();
   }
 

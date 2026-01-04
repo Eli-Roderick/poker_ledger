@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/providers/auth_providers.dart';
 import '../../players/domain/player.dart';
 import '../domain/session_models.dart';
 import 'session_providers.dart' show sessionRepositoryProvider;
@@ -27,6 +28,11 @@ class SessionDetailState {
 class SessionDetailNotifier extends FamilyAsyncNotifier<SessionDetailState, int> {
   @override
   Future<SessionDetailState> build(int sessionId) async {
+    // Watch auth state to auto-refresh when user changes
+    final user = ref.watch(currentUserProvider);
+    if (user == null) {
+      throw StateError('Not authenticated');
+    }
     return _fetchData(sessionId);
   }
   

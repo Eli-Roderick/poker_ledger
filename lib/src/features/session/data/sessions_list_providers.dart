@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/providers/auth_providers.dart';
 import '../domain/session_models.dart';
 import 'session_repository.dart';
 import 'session_providers.dart' show sessionRepositoryProvider;
@@ -43,6 +44,10 @@ class SessionsListNotifier extends AsyncNotifier<List<SessionWithOwner>> {
 
   @override
   Future<List<SessionWithOwner>> build() async {
+    // Watch auth state to auto-refresh when user changes
+    final user = ref.watch(currentUserProvider);
+    if (user == null) return [];
+    
     _repo = ref.read(sessionRepositoryProvider);
     // Sessions list only shows user's own sessions
     // Shared sessions only appear in Analytics when filtering by group

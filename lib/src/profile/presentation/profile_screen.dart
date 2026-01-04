@@ -10,6 +10,10 @@ import '../../features/session/domain/session_models.dart';
 import '../../features/session/presentation/session_detail_screen.dart';
 
 final myLinkedSessionsProvider = FutureProvider<List<SessionWithOwner>>((ref) async {
+  // Watch auth state to auto-refresh when user changes
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return [];
+  
   final repo = ref.read(sessionRepositoryProvider);
   return repo.listSessionsAsLinkedPlayer();
 });

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../auth/providers/auth_providers.dart';
 import '../../session/data/session_repository.dart';
 import '../../session/domain/session_models.dart';
 
@@ -53,6 +54,12 @@ class SummaryNotifier extends AsyncNotifier<SummaryState> {
 
   @override
   Future<SummaryState> build() async {
+    // Watch auth state to auto-refresh when user changes
+    final user = ref.watch(currentUserProvider);
+    if (user == null) {
+      return SummaryState(filters: _filters, entries: []);
+    }
+    
     _repo = ref.read(summaryRepositoryProvider);
     return _load();
   }

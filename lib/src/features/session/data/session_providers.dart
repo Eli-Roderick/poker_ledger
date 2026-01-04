@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../auth/providers/auth_providers.dart';
 import '../../players/domain/player.dart';
 import '../domain/session_models.dart';
 import 'session_repository.dart';
@@ -18,6 +19,12 @@ class OpenSessionNotifier extends AsyncNotifier<OpenSessionState> {
 
   @override
   Future<OpenSessionState> build() async {
+    // Watch auth state to auto-refresh when user changes
+    final user = ref.watch(currentUserProvider);
+    if (user == null) {
+      throw Exception('Not authenticated');
+    }
+    
     _repo = ref.read(sessionRepositoryProvider);
     final session = await _repo.getOrCreateOpenSession();
     final participants = await _listSessionPlayers(session.id!);
