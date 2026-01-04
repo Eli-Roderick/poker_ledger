@@ -15,7 +15,7 @@ class OpenSessionState {
 }
 
 class OpenSessionNotifier extends AsyncNotifier<OpenSessionState> {
-  late final SessionRepository _repo;
+  SessionRepository get _repo => ref.read(sessionRepositoryProvider);
 
   @override
   Future<OpenSessionState> build() async {
@@ -25,7 +25,6 @@ class OpenSessionNotifier extends AsyncNotifier<OpenSessionState> {
       throw Exception('Not authenticated');
     }
     
-    _repo = ref.read(sessionRepositoryProvider);
     final session = await _repo.getOrCreateOpenSession();
     final participants = await _listSessionPlayers(session.id!);
     final allPlayers = await _repo.getAllPlayers();

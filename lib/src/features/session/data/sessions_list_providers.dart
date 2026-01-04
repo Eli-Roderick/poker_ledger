@@ -40,7 +40,7 @@ final sessionsSourceFilterProvider = StateProvider<SessionsFilterState>(
 );
 
 class SessionsListNotifier extends AsyncNotifier<List<SessionWithOwner>> {
-  late final SessionRepository _repo;
+  SessionRepository get _repo => ref.read(sessionRepositoryProvider);
 
   @override
   Future<List<SessionWithOwner>> build() async {
@@ -48,7 +48,6 @@ class SessionsListNotifier extends AsyncNotifier<List<SessionWithOwner>> {
     final user = ref.watch(currentUserProvider);
     if (user == null) return [];
     
-    _repo = ref.read(sessionRepositoryProvider);
     // Sessions list only shows user's own sessions
     // Shared sessions only appear in Analytics when filtering by group
     final sessions = await _repo.listMySessions();

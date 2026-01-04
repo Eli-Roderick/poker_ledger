@@ -43,7 +43,7 @@ class SummaryState {
 final summaryRepositoryProvider = Provider<SessionRepository>((ref) => SessionRepository());
 
 class SummaryNotifier extends AsyncNotifier<SummaryState> {
-  late final SessionRepository _repo;
+  SessionRepository get _repo => ref.read(summaryRepositoryProvider);
   SummaryFilters _filters = SummaryFilters(
     range: DateTimeRange(
       start: DateTime.now().subtract(const Duration(days: 30)),
@@ -60,7 +60,6 @@ class SummaryNotifier extends AsyncNotifier<SummaryState> {
       return SummaryState(filters: _filters, entries: []);
     }
     
-    _repo = ref.read(summaryRepositoryProvider);
     return _load();
   }
 

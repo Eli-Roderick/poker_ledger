@@ -11,7 +11,7 @@ final playersRepositoryProvider = Provider<PlayersRepository>((ref) {
 class PlayersListNotifier extends AsyncNotifier<List<Player>> {
   PlayersListNotifier();
 
-  late final PlayersRepository _repo;
+  PlayersRepository get _repo => ref.read(playersRepositoryProvider);
   bool _showDeactivated = false;
   bool get showDeactivated => _showDeactivated;
 
@@ -21,7 +21,6 @@ class PlayersListNotifier extends AsyncNotifier<List<Player>> {
     final user = ref.watch(currentUserProvider);
     if (user == null) return [];
     
-    _repo = ref.read(playersRepositoryProvider);
     return _repo.getAll(includeDeactivated: _showDeactivated, deactivatedOnly: _showDeactivated);
   }
 

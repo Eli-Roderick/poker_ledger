@@ -13,8 +13,13 @@ void main() async {
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     systemNavigationBarColor: Color(0xFF111315),
     systemNavigationBarDividerColor: Color(0xFF111315),
+    systemNavigationBarIconBrightness: Brightness.light,
     statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
   ));
+  
+  // Enable edge-to-edge mode for better keyboard handling
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   
   await Supabase.initialize(
     url: 'https://rgalzgiizhtwzwkfasoc.supabase.co',
