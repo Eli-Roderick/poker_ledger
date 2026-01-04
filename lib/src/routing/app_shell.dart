@@ -1,21 +1,24 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/analytics/presentation/analytics_screen.dart';
+import '../features/analytics/data/analytics_providers.dart';
 import '../features/groups/presentation/groups_screen.dart';
 import '../features/players/presentation/players_list_screen.dart';
 import '../features/session/presentation/sessions_home_screen.dart';
+import '../features/session/data/sessions_list_providers.dart';
 import '../profile/presentation/profile_screen.dart';
 
-class AppShell extends StatefulWidget {
+class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _AppShellState extends ConsumerState<AppShell> {
   int _index = 0;
   bool _showedOnboarding = false;
 
@@ -68,7 +71,17 @@ class _AppShellState extends State<AppShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        onDestinationSelected: (i) {
+          // Refresh data when switching to certain tabs
+          if (i == 2 && _index != 2) {
+            // Switching to Stats tab - refresh analytics
+            ref.read(analyticsProvider.notifier).refresh();
+          } else if (i == 1 && _index != 1) {
+            // Switching to Games tab - refresh sessions list
+            ref.read(sessionsListProvider.notifier).refresh();
+          }
+          setState(() => _index = i);
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Players'),
           NavigationDestination(icon: Icon(Icons.casino_outlined), selectedIcon: Icon(Icons.casino), label: 'Games'),

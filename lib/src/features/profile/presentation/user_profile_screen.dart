@@ -29,6 +29,8 @@ class UserProfileScreen extends ConsumerStatefulWidget {
 
 class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   int? _selectedGroupId;
+  DateTime? _startDate;
+  DateTime? _endDate;
   final _currency = NumberFormat.simpleCurrency();
   late String _currentPlayerName;
 
@@ -105,16 +107,8 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
             _buildGroupFilter(context, mutualGroupsAsync),
             const SizedBox(height: 24),
 
-            // Summary stats (like old profile)
-            _buildSummarySection(context, statsAsync),
-            const SizedBox(height: 24),
-
-            // History section (last 3 sessions)
-            _buildHistorySection(context, sessionsAsync),
-            const SizedBox(height: 24),
-
-            // Shared sessions section
-            _buildSharedSessionsSection(context, sessionsAsync),
+            // Summary stats and history - computed from filtered sessions
+            _buildFilteredContent(context, sessionsAsync),
           ],
         ),
       ),
@@ -248,12 +242,12 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   }
 
   Widget _buildGroupFilter(BuildContext context, AsyncValue<List<Map<String, dynamic>>> groupsAsync) {
+    final hasDateFilter = _startDate != null || _endDate != null;
+    
     return groupsAsync.when(
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (groups) {
-        if (groups.isEmpty) return const SizedBox.shrink();
-
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -262,7 +256,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
           ),
           child: Row(
             children: [
-              Icon(Icons.filter_list, size: 20, color: Theme.of(context).colorScheme.outline),
+              Icon(Icons.group, size: 20, color: Theme.of(context).colorScheme.outline),
               const SizedBox(width: 8),
               Expanded(
                 child: DropdownButtonHideUnderline(
@@ -283,6 +277,16 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: Icon(
+                  hasDateFilter ? Icons.filter_alt : Icons.filter_list,
+                  color: hasDateFilter ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outline,
+                ),
+                tooltip: 'Date filters',
+                onPressed: () => _showDateFiltersSheet(context),
+                visualDensity: VisualDensity.compact,
+              ),
             ],
           ),
         );
@@ -290,11 +294,128 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     );
   }
 
-  Widget _buildSummarySection(BuildContext context, AsyncValue<UserProfileStats> statsAsync) {
-    return statsAsync.when(
+  void _showDateFiltersSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Date Filters',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Date Range', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey)),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _DateButton(
+                      label: 'Start Date',
+                      date: _startDate,
+                      onTap: () async {
+                        final picked = await _pickDate(context, _startDate ?? DateTime.now());
+                        if (picked != null) {
+                          setState(() => _startDate = picked);
+                          if (context.mounted) Navigator.pop(context);
+                        }
+                      },
+                      onClear: _startDate != null ? () {
+                        setState(() => _startDate = null);
+                        Navigator.pop(context);
+                      } : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _DateButton(
+                      label: 'End Date',
+                      date: _endDate,
+                      onTap: () async {
+                        final picked = await _pickDate(context, _endDate ?? DateTime.now());
+                        if (picked != null) {
+                          setState(() => _endDate = picked);
+                          if (context.mounted) Navigator.pop(context);
+                        }
+                      },
+                      onClear: _endDate != null ? () {
+                        setState(() => _endDate = null);
+                        Navigator.pop(context);
+                      } : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: FilledButton.tonal(
+                onPressed: () {
+                  setState(() {
+                    _startDate = null;
+                    _endDate = null;
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Clear All Filters'),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<DateTime?> _pickDate(BuildContext context, DateTime initial) async {
+    final now = DateTime.now();
+    final first = DateTime(now.year - 5);
+    final last = DateTime(now.year + 5);
+    return showDatePicker(context: context, initialDate: initial, firstDate: first, lastDate: last);
+  }
+
+  Widget _buildFilteredContent(BuildContext context, AsyncValue<List<UserSessionSummary>> sessionsAsync) {
+    return sessionsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Text('Error: $e'),
-      data: (stats) {
+      data: (sessions) {
+        // Apply date filters
+        var filteredSessions = sessions.toList();
+        if (_startDate != null) {
+          filteredSessions = filteredSessions.where((s) => !s.startedAt.isBefore(_startDate!)).toList();
+        }
+        if (_endDate != null) {
+          filteredSessions = filteredSessions.where((s) => !s.startedAt.isAfter(_endDate!.add(const Duration(days: 1)))).toList();
+        }
+
+        // Calculate stats from filtered sessions
+        final totalSessions = filteredSessions.length;
+        final totalBuyIns = filteredSessions.fold<int>(0, (sum, s) => sum + s.buyInsCents);
+        final totalCashOuts = filteredSessions.fold<int>(0, (sum, s) => sum + s.cashOutsCents);
+        final totalNet = totalCashOuts - totalBuyIns;
+        final wins = filteredSessions.where((s) => s.netCents > 0).length;
+        final winRate = totalSessions > 0 ? (wins / totalSessions * 100) : 0.0;
+        final bestSession = filteredSessions.isEmpty ? 0 : filteredSessions.map((s) => s.netCents).reduce((a, b) => a > b ? a : b);
+        final worstSession = filteredSessions.isEmpty ? 0 : filteredSessions.map((s) => s.netCents).reduce((a, b) => a < b ? a : b);
+
+        // Shared sessions - sessions not owned by current user (accessible via following or group)
+        final sharedSessions = filteredSessions.where((s) => !s.isOwner).toList();
+
         Color netColor(int cents) {
           if (cents == 0) return Theme.of(context).colorScheme.outline;
           return cents > 0 ? Colors.green : Colors.red;
@@ -312,134 +433,107 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
           );
         }
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Summary', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 20,
-                runSpacing: 12,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Summary section
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  stat('Sessions', stats.totalSessions.toString()),
-                  stat('Total buy-ins', _currency.format(stats.totalBuyInsCents / 100)),
-                  stat('Total cash-outs', _currency.format(stats.totalCashOutsCents / 100)),
-                  stat('Total net', _currency.format(stats.netProfitCents / 100), valueColor: netColor(stats.netProfitCents)),
-                  stat('Win rate', '${stats.winRate.toStringAsFixed(0)}%'),
-                  stat('Best session', _currency.format(stats.biggestWinCents / 100), valueColor: stats.biggestWinCents > 0 ? Colors.green : null),
-                  stat('Worst session', _currency.format(stats.biggestLossCents / 100), valueColor: stats.biggestLossCents < 0 ? Colors.red : null),
+                  Text('Summary', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 20,
+                    runSpacing: 12,
+                    children: [
+                      stat('Sessions', totalSessions.toString()),
+                      stat('Total buy-ins', _currency.format(totalBuyIns / 100)),
+                      stat('Total cash-outs', _currency.format(totalCashOuts / 100)),
+                      stat('Total net', _currency.format(totalNet / 100), valueColor: netColor(totalNet)),
+                      stat('Win rate', '${winRate.toStringAsFixed(0)}%'),
+                      stat('Best session', _currency.format(bestSession / 100), valueColor: bestSession > 0 ? Colors.green : null),
+                      stat('Worst session', _currency.format(worstSession / 100), valueColor: worstSession < 0 ? Colors.red : null),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+
+            // History section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'History',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => UserHistoryScreen(
+                          userId: widget.userId,
+                          displayName: widget.playerName ?? widget.initialDisplayName,
+                          initialGroupId: _selectedGroupId,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('View All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (filteredSessions.isEmpty)
+              _buildEmptyState(context, 'No sessions yet', 'Sessions will appear here.')
+            else
+              Column(
+                children: filteredSessions.take(3).map((s) => _buildSessionTile(context, s)).toList(),
+              ),
+            const SizedBox(height: 24),
+
+            // Shared sessions section
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Shared Sessions',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => UserHistoryScreen(
+                          userId: widget.userId,
+                          displayName: widget.playerName ?? widget.initialDisplayName,
+                          initialGroupId: _selectedGroupId,
+                          showSharedOnly: true,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('View All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (sharedSessions.isEmpty)
+              _buildEmptyState(context, 'No shared sessions', 'Sessions shared to groups will appear here.')
+            else
+              Column(
+                children: sharedSessions.take(3).map((s) => _buildSessionTile(context, s)).toList(),
+              ),
+          ],
         );
       },
-    );
-  }
-
-  Widget _buildHistorySection(BuildContext context, AsyncValue<List<UserSessionSummary>> sessionsAsync) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'History',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => UserHistoryScreen(
-                      userId: widget.userId,
-                      displayName: widget.playerName ?? widget.initialDisplayName,
-                      initialGroupId: _selectedGroupId,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('View All'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        sessionsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('Error: $e'),
-          data: (sessions) {
-            if (sessions.isEmpty) {
-              return _buildEmptyState(context, 'No sessions yet', 'Sessions will appear here.');
-            }
-            // Show only last 3 sessions
-            final recentSessions = sessions.take(3).toList();
-            return Column(
-              children: recentSessions.map((s) => _buildSessionTile(context, s)).toList(),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSharedSessionsSection(BuildContext context, AsyncValue<List<UserSessionSummary>> sessionsAsync) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Shared Sessions',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => UserHistoryScreen(
-                      userId: widget.userId,
-                      displayName: widget.playerName ?? widget.initialDisplayName,
-                      initialGroupId: _selectedGroupId,
-                      showSharedOnly: true,
-                    ),
-                  ),
-                );
-              },
-              child: const Text('View All'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Sessions you\'ve played together',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
-        ),
-        const SizedBox(height: 8),
-        sessionsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('Error: $e'),
-          data: (sessions) {
-            // Filter to sessions where both users participated (shared sessions)
-            final sharedSessions = sessions.where((s) => s.groupId != null).take(3).toList();
-            if (sharedSessions.isEmpty) {
-              return _buildEmptyState(
-                context,
-                'No shared sessions',
-                'Sessions shared to mutual groups will appear here.',
-              );
-            }
-            return Column(
-              children: sharedSessions.map((s) => _buildSessionTile(context, s)).toList(),
-            );
-          },
-        ),
-      ],
     );
   }
 
@@ -537,6 +631,9 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       final repo = ref.read(profileRepositoryProvider);
       await repo.sendFollowRequest(widget.userId);
       ref.invalidate(followStatusProvider(widget.userId));
+      // Also refresh sessions since follow status affects what's visible
+      ref.invalidate(userSessionsProvider(UserProfileParams(userId: widget.userId, groupId: _selectedGroupId)));
+      ref.invalidate(userProfileStatsProvider(UserProfileParams(userId: widget.userId, groupId: _selectedGroupId)));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Follow request sent')),
@@ -556,6 +653,9 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       final repo = ref.read(profileRepositoryProvider);
       await repo.cancelFollow(widget.userId);
       ref.invalidate(followStatusProvider(widget.userId));
+      // Also refresh sessions since follow status affects what's visible
+      ref.invalidate(userSessionsProvider(UserProfileParams(userId: widget.userId, groupId: _selectedGroupId)));
+      ref.invalidate(userProfileStatsProvider(UserProfileParams(userId: widget.userId, groupId: _selectedGroupId)));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Follow request cancelled')),
@@ -604,5 +704,46 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         }
       }
     }
+  }
+}
+
+class _DateButton extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+  const _DateButton({required this.label, required this.date, required this.onTap, this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = date == null ? 'Any' : DateFormat.yMMMd().format(date!);
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey)),
+                const SizedBox(height: 2),
+                Text(text, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+          ),
+          if (onClear != null)
+            GestureDetector(
+              onTap: onClear,
+              child: const Icon(Icons.close, size: 18),
+            )
+          else
+            const Icon(Icons.calendar_today, size: 18),
+        ],
+      ),
+    );
   }
 }
