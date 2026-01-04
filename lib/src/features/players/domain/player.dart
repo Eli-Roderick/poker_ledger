@@ -1,3 +1,13 @@
+/// Represents a player in the poker ledger.
+/// 
+/// Players can be either:
+/// - **Linked**: Connected to a user account via [linkedUserId], allowing
+///   cross-user stat tracking and profile viewing
+/// - **Guest**: Not linked to any account (legacy players or unregistered friends)
+/// 
+/// Each user maintains their own player list. The same real person may exist
+/// as different Player records for different users, but linking them to the
+/// same user account allows stats to be aggregated correctly.
 class Player {
   final int? id;
   final String name;
@@ -6,8 +16,12 @@ class Player {
   final String? notes;
   final DateTime createdAt;
   final bool active;
-  final String? linkedUserId; // UUID of linked user account (null = guest)
-  final String? linkedUserDisplayName; // Display name of linked user (for UI)
+  
+  /// UUID of the linked user account, or null for guest players
+  final String? linkedUserId;
+  
+  /// Display name of the linked user (cached for UI display)
+  final String? linkedUserDisplayName;
 
   const Player({
     this.id,
@@ -21,7 +35,10 @@ class Player {
     this.linkedUserDisplayName,
   });
 
+  /// True if this player is not linked to a user account
   bool get isGuest => linkedUserId == null;
+  
+  /// True if this player is linked to a user account
   bool get isLinked => linkedUserId != null;
 
   Player copyWith({

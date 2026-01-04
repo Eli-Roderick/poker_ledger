@@ -4,6 +4,12 @@ import '../../session/data/session_repository.dart';
 import '../../session/domain/session_models.dart';
 import '../../groups/data/group_providers.dart';
 
+/// Filters for the analytics/stats screen.
+/// 
+/// Supports filtering by:
+/// - Date range (start/end dates)
+/// - In-progress sessions (include or exclude)
+/// - Group (view stats for a specific group's shared sessions)
 class AnalyticsFilters {
   final DateTime? start;
   final DateTime? end;
@@ -12,6 +18,7 @@ class AnalyticsFilters {
   final String? groupName;
   const AnalyticsFilters({this.start, this.end, this.includeInProgress = false, this.groupId, this.groupName});
 
+  /// Check if a date falls within the filter range
   bool _inRange(DateTime d) {
     final afterStart = start == null || !d.isBefore(start!);
     final beforeEnd = end == null || !d.isAfter(end!);
@@ -26,6 +33,7 @@ class AnalyticsFilters {
         groupName: groupName ?? this.groupName,
       );
   
+  /// Clear the group filter while preserving other filters
   AnalyticsFilters clearGroup() => AnalyticsFilters(
         start: start,
         end: end,
@@ -35,6 +43,11 @@ class AnalyticsFilters {
       );
 }
 
+/// Aggregated statistics for a single player across filtered sessions.
+/// 
+/// Used in the leaderboard and player rankings on the Stats screen.
+/// Players are identified by playerId, but may be linked to a user account
+/// via linkedUserId for navigation to their profile.
 class PlayerAggregate {
   final int playerId;
   final String playerName;

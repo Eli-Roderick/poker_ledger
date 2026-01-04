@@ -1,9 +1,15 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/profile_models.dart';
 
+/// Repository for user profile operations.
+/// 
+/// Handles fetching user profiles, stats, sessions, and managing follow relationships.
+/// All data access is scoped to what the current authenticated user is allowed to see,
+/// based on ownership, group membership, and follow status.
 class ProfileRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
+  /// The currently authenticated user's ID
   String get _currentUserId => _client.auth.currentUser!.id;
 
   /// Get user profile info by user ID
@@ -111,11 +117,22 @@ class ProfileRepository {
     );
   }
 
-  /// Get session IDs accessible to current user where target user participated
+  /// Determines which session IDs are accessible to the current user where the target user participated.
+  /// 
+  /// Access is granted through three mechanisms:
+  /// 1. **Ownership**: Sessions owned by the current user (target must have participated)
+  /// 2. **Group sharing**: Sessions shared to groups the current user belongs to
+  /// 3. **Following**: If current user follows target (accepted), all target's sessions are visible
+  /// 
+  /// The [groupId] parameter optionally filters to a specific group.
+  /// The [isFollowing] parameter indicates if the current user has an accepted follow relationship.
+  /// 
+  /// Returns a list of session IDs where the target user actually participated.
   Future<List<int>> _getAccessibleSessionIds(String targetUserId, {int? groupId, bool isFollowing = false}) async {
     Set<int> sessionIds = {};
 
-    // 1. Sessions owned by current user where target participated
+    // Step 1: Add all sessions owned by the current user
+    // These are always visible to the current user
     final ownedSessions = await _client
         .from('sessions')
         .select('id')
@@ -125,8 +142,8 @@ class ProfileRepository {
       sessionIds.add(s['id'] as int);
     }
 
-    // 2. Sessions shared to groups current user is in
-    // Get groups current user is in
+    // Step 2: Add sessions shared to groups the current user belongs to
+    // First, get all groups where current user is owner or member
     final userGroups = await _client
         .from('groups')
         .select('id')
@@ -142,11 +159,12 @@ class ProfileRepository {
       ...memberGroups.map((g) => g['group_id'] as int),
     };
 
+    // If filtering by specific group, only keep that group
     if (groupId != null) {
-      // Filter to specific group
       groupIds.retainWhere((id) => id == groupId);
     }
 
+    // Get all sessions shared to these groups
     if (groupIds.isNotEmpty) {
       final sharedSessions = await _client
           .from('session_groups')
@@ -158,7 +176,8 @@ class ProfileRepository {
       }
     }
 
-    // 3. If following, include all sessions where target user owns or participated
+    // Step 3: If following the target user, include all their sessions
+    // This grants full visibility into the followed user's poker history
     if (isFollowing) {
       // Sessions owned by target user
       final targetOwnedSessions = await _client
@@ -170,7 +189,7 @@ class ProfileRepository {
         sessionIds.add(s['id'] as int);
       }
 
-      // Sessions where target user participated (via linked player)
+      // Sessions where target user participated (via linked player record)
       final targetParticipatedSessions = await _client
           .from('session_players')
           .select('session_id, players!inner(linked_user_id)')
@@ -181,7 +200,8 @@ class ProfileRepository {
       }
     }
 
-    // Now filter to only sessions where target user actually participated
+    // Final step: Filter to only sessions where the target user actually participated
+    // This ensures we only return sessions relevant to the target user's profile
     if (sessionIds.isEmpty) return [];
 
     final participatedSessions = await _client

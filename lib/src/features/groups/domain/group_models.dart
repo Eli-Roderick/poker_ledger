@@ -1,9 +1,23 @@
+/// Represents a group for sharing poker sessions.
+/// 
+/// Groups allow multiple users to share their sessions with each other,
+/// enabling collaborative stat tracking and leaderboards. 
+/// 
+/// Key features:
+/// - Owner can invite members and manage the group
+/// - Members can share their sessions to the group
+/// - All members can view sessions shared to the group
+/// - Stats can be filtered by group to see group-specific leaderboards
 class Group {
   final int id;
   final String name;
   final String ownerId;
   final DateTime createdAt;
+  
+  /// True if the current user is the owner of this group
   final bool isOwner;
+  
+  /// Number of members in the group (including owner)
   final int memberCount;
 
   const Group({

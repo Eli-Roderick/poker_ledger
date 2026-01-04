@@ -11,6 +11,17 @@ import '../features/session/presentation/sessions_home_screen.dart';
 import '../features/session/data/sessions_list_providers.dart';
 import '../profile/presentation/profile_screen.dart';
 
+/// Main app shell with bottom navigation.
+/// 
+/// Contains the five main screens of the app:
+/// - **Players**: Manage your player list (friends you play with)
+/// - **Games**: Create and manage poker sessions
+/// - **Stats**: View analytics, leaderboards, and session history
+/// - **Groups**: Create and manage groups for sharing sessions
+/// - **Profile**: Account settings and personal stats
+/// 
+/// The shell uses IndexedStack to keep all screens in memory for fast switching.
+/// When switching to Stats or Games tabs, data is automatically refreshed.
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 

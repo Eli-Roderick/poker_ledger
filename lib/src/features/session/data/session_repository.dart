@@ -2,9 +2,18 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 import '../../players/domain/player.dart';
 import '../domain/session_models.dart';
 
+/// Repository for poker session CRUD operations.
+/// 
+/// Handles creating, reading, updating, and deleting poker sessions and their players.
+/// Sessions are owned by users and can be shared to groups for collaborative viewing.
+/// Each session tracks buy-ins, cash-outs, and settlement status for all participants.
 class SessionRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
+  /// Gets the most recent open (non-finalized) session for the current user,
+  /// or creates a new one if none exists.
+  /// 
+  /// New sessions are automatically named using the pattern "[FirstName]'s Game #N"
   Future<Session> getOrCreateOpenSession() async {
     final userId = _client.auth.currentUser!.id;
     

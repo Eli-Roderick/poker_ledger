@@ -1,12 +1,28 @@
-/// Represents a follow relationship between users
+/// Represents a follow relationship between users.
+/// 
+/// Following allows users to see each other's complete poker history.
+/// The follow system uses a request/accept model:
+/// 1. User A sends a follow request to User B (status: pending)
+/// 2. User B can accept (status: accepted) or reject (status: rejected)
+/// 3. Once accepted, User A can see all of User B's sessions
 class Follow {
   final int id;
+  
+  /// The user who initiated the follow request
   final String followerId;
+  
+  /// The user being followed
   final String followingId;
+  
+  /// Current status of the follow request
   final FollowStatus status;
   final DateTime createdAt;
   final DateTime updatedAt;
+  
+  /// Display name of the follower (for UI)
   final String? followerName;
+  
+  /// Display name of the user being followed (for UI)
   final String? followingName;
 
   const Follow({
@@ -53,17 +69,34 @@ enum FollowStatus {
   String toJson() => name;
 }
 
-/// Stats for a user in shared sessions
+/// Aggregated statistics for a user's poker performance.
+/// 
+/// Calculated from sessions accessible to the viewing user.
+/// Stats are scoped based on ownership, group membership, and follow status.
 class UserProfileStats {
   final String userId;
   final String? displayName;
   final String? email;
+  
+  /// Total number of sessions the user participated in
   final int totalSessions;
+  
+  /// Sum of all buy-ins across sessions (in cents)
   final int totalBuyInsCents;
+  
+  /// Sum of all cash-outs across sessions (in cents)
   final int totalCashOutsCents;
+  
+  /// Net profit/loss (cash-outs - buy-ins) in cents
   final int netProfitCents;
-  final double winRate; // percentage of sessions with positive outcome
+  
+  /// Percentage of sessions with positive outcome (0-100)
+  final double winRate;
+  
+  /// Best single-session result in cents
   final int biggestWinCents;
+  
+  /// Worst single-session result in cents (negative)
   final int biggestLossCents;
 
   const UserProfileStats({
@@ -80,7 +113,10 @@ class UserProfileStats {
   });
 }
 
-/// A session where the viewed user participated
+/// Summary of a single session for display in user profile history.
+/// 
+/// Contains the key financial details and metadata for one session
+/// where the viewed user participated.
 class UserSessionSummary {
   final int sessionId;
   final String? sessionName;

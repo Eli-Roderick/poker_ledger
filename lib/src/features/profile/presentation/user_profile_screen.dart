@@ -9,6 +9,21 @@ import '../../players/data/players_providers.dart';
 import '../../help/presentation/help_screen.dart';
 import 'user_history_screen.dart';
 
+/// Screen displaying another user's poker profile and statistics.
+/// 
+/// Shows:
+/// - User info (display name, email, follow status)
+/// - Summary statistics (sessions, buy-ins, cash-outs, net profit, win rate)
+/// - Recent session history
+/// - Shared sessions (sessions where both users participated)
+/// 
+/// Access to data is controlled by:
+/// - Sessions the current user owns where target participated
+/// - Sessions shared to mutual groups
+/// - All sessions if current user follows the target (accepted)
+/// 
+/// The [playerId] and [playerName] are optional and used when navigating
+/// from the Players list to show the local player name context.
 class UserProfileScreen extends ConsumerStatefulWidget {
   final String userId;
   final String? initialDisplayName;
@@ -248,27 +263,45 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (groups) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.group, size: 20, color: Theme.of(context).colorScheme.outline),
-              const SizedBox(width: 8),
-              Expanded(
+        return Row(
+          children: [
+            // Group dropdown in its own styled container
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<int?>(
                     value: _selectedGroupId,
                     isExpanded: true,
                     isDense: true,
+                    icon: Icon(Icons.keyboard_arrow_down, color: Theme.of(context).colorScheme.outline),
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(12),
                     items: [
-                      const DropdownMenuItem<int?>(value: null, child: Text('All mutual groups')),
+                      DropdownMenuItem<int?>(
+                        value: null,
+                        child: Row(
+                          children: [
+                            Icon(Icons.bar_chart, size: 18, color: Theme.of(context).colorScheme.primary),
+                            const SizedBox(width: 8),
+                            const Text('All Stats'),
+                          ],
+                        ),
+                      ),
                       ...groups.map((g) => DropdownMenuItem<int?>(
                             value: g['id'] as int,
-                            child: Text(g['name'] as String),
+                            child: Row(
+                              children: [
+                                Icon(Icons.group, size: 18, color: Theme.of(context).colorScheme.outline),
+                                const SizedBox(width: 8),
+                                Text(g['name'] as String),
+                              ],
+                            ),
                           )),
                     ],
                     onChanged: (value) {
@@ -277,18 +310,28 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
+            ),
+            const SizedBox(width: 12),
+            // Filter icon in its own bubble
+            Container(
+              decoration: BoxDecoration(
+                color: hasDateFilter 
+                    ? Theme.of(context).colorScheme.primaryContainer 
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: IconButton(
                 icon: Icon(
                   hasDateFilter ? Icons.filter_alt : Icons.filter_list,
-                  color: hasDateFilter ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outline,
+                  color: hasDateFilter 
+                      ? Theme.of(context).colorScheme.primary 
+                      : Theme.of(context).colorScheme.outline,
                 ),
                 tooltip: 'Date filters',
                 onPressed: () => _showDateFiltersSheet(context),
-                visualDensity: VisualDensity.compact,
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
@@ -413,8 +456,9 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         final bestSession = filteredSessions.isEmpty ? 0 : filteredSessions.map((s) => s.netCents).reduce((a, b) => a > b ? a : b);
         final worstSession = filteredSessions.isEmpty ? 0 : filteredSessions.map((s) => s.netCents).reduce((a, b) => a < b ? a : b);
 
-        // Shared sessions - sessions not owned by current user (accessible via following or group)
-        final sharedSessions = filteredSessions.where((s) => !s.isOwner).toList();
+        // Shared sessions - all sessions where both users participated together
+        // This includes sessions owned by current user where target participated
+        final sharedSessions = filteredSessions;
 
         Color netColor(int cents) {
           if (cents == 0) return Theme.of(context).colorScheme.outline;

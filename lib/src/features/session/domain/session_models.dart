@@ -1,10 +1,24 @@
+/// Represents a poker session (game night).
+/// 
+/// A session tracks a single poker game from start to finish, including:
+/// - All participating players and their buy-ins/cash-outs
+/// - Settlement mode (pairwise or banker)
+/// - Finalization status (locked when complete)
+/// 
+/// Sessions can be shared to groups for collaborative stat tracking.
 class Session {
   final int? id;
   final String? name;
   final DateTime startedAt;
   final DateTime? endedAt;
+  
+  /// True when the session is complete and locked for editing
   final bool finalized;
-  final String settlementMode; // 'pairwise' or 'banker'
+  
+  /// Settlement mode: 'pairwise' (everyone settles with everyone) or 'banker' (one person handles all)
+  final String settlementMode;
+  
+  /// The session_player ID of the banker (only used in banker mode)
   final int? bankerSessionPlayerId;
 
   const Session({
@@ -42,13 +56,27 @@ class Session {
       );
 }
 
+/// Represents a player's participation in a specific session.
+/// 
+/// Tracks the financial details for one player in one session:
+/// - Buy-ins (initial + rebuys combined)
+/// - Cash-out (entered when player leaves)
+/// - Settlement status (for tracking who has paid/received)
 class SessionPlayer {
   final int? id;
   final int sessionId;
   final int playerId;
-  final int buyInCentsTotal; // includes initial + rebuys
-  final int? cashOutCents; // nullable until entered
+  
+  /// Total buy-in amount in cents (includes initial buy-in + all rebuys)
+  final int buyInCentsTotal;
+  
+  /// Cash-out amount in cents (null until player cashes out)
+  final int? cashOutCents;
+  
+  /// True if player paid their buy-in upfront (affects settlement calculations)
   final bool paidUpfront;
+  
+  /// True if this player's settlement is complete
   final bool settlementDone;
 
   const SessionPlayer({

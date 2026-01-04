@@ -60,10 +60,8 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
           // Apply all filters to get the filtered list
           var filteredSessions = sessions.toList();
           
-          // Filter by shared only if needed (sessions not owned by current user)
-          if (widget.showSharedOnly) {
-            filteredSessions = filteredSessions.where((s) => !s.isOwner).toList();
-          }
+          // Note: showSharedOnly no longer filters - all sessions are "shared" 
+          // since they represent sessions where both users participated together
           
           // Filter by date range if set
           if (_startDate != null) {

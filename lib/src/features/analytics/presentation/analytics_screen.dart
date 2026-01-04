@@ -14,6 +14,7 @@ import 'package:poker_ledger/src/features/groups/data/group_providers.dart';
 
 import '../data/analytics_providers.dart';
 import 'package:poker_ledger/src/features/players/presentation/player_detail_screen.dart';
+import 'package:poker_ledger/src/features/profile/presentation/user_profile_screen.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   static const routeName = '/analytics';
@@ -539,11 +540,26 @@ class _PlayerTile extends StatelessWidget {
         style: TextStyle(color: p.netCents == 0 ? Theme.of(context).colorScheme.outline : (p.netCents > 0 ? Colors.green : Colors.red)),
       ),
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PlayerDetailScreen(playerId: p.playerId, playerName: p.playerName),
-          ),
-        );
+        // Navigate to UserProfileScreen if player is linked to a user account,
+        // otherwise show the legacy PlayerDetailScreen for guests
+        if (p.linkedUserId != null) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => UserProfileScreen(
+                userId: p.linkedUserId!,
+                initialDisplayName: p.playerName,
+                playerId: p.playerId,
+                playerName: p.playerName,
+              ),
+            ),
+          );
+        } else {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => PlayerDetailScreen(playerId: p.playerId, playerName: p.playerName),
+            ),
+          );
+        }
       },
     );
   }
@@ -662,11 +678,26 @@ class _AllPlayersRow extends StatelessWidget {
           Expanded(
             child: InkWell(
               onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PlayerDetailScreen(playerId: p.playerId, playerName: p.playerName),
-                  ),
-                );
+                // Navigate to UserProfileScreen if player is linked to a user account,
+                // otherwise show the legacy PlayerDetailScreen for guests
+                if (p.linkedUserId != null) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => UserProfileScreen(
+                        userId: p.linkedUserId!,
+                        initialDisplayName: p.playerName,
+                        playerId: p.playerId,
+                        playerName: p.playerName,
+                      ),
+                    ),
+                  );
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => PlayerDetailScreen(playerId: p.playerId, playerName: p.playerName),
+                    ),
+                  );
+                }
               },
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
