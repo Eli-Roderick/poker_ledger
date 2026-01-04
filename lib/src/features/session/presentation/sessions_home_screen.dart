@@ -219,13 +219,13 @@ class SessionsHomeScreen extends ConsumerWidget {
                   subtitle: Text('$started • $status'),
                   trailing: isOwner
                       ? IconButton(
-                          tooltip: 'Delete session',
+                          tooltip: 'Delete game',
                           icon: const Icon(Icons.delete_outline),
                           onPressed: () async {
                             final ok = await showDialog<bool>(
                               context: context,
                               builder: (_) => AlertDialog(
-                                title: const Text('Delete session?'),
+                                title: const Text('Delete game?'),
                                 content: const Text('This action cannot be undone.'),
                                 actions: [
                                   TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -252,7 +252,7 @@ class SessionsHomeScreen extends ConsumerWidget {
                                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $error')));
                                 });
                               } else {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot delete session without ID')));
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cannot delete game without ID')));
                               }
                             }
                           },
@@ -269,7 +269,7 @@ class SessionsHomeScreen extends ConsumerWidget {
                           final newName = await showDialog<String?>(
                             context: context,
                             builder: (_) => AlertDialog(
-                              title: const Text('Rename session'),
+                              title: const Text('Rename game'),
                               content: TextField(
                                 controller: controller,
                                 decoration: const InputDecoration(labelText: 'Name (optional)'),
@@ -293,7 +293,7 @@ class SessionsHomeScreen extends ConsumerWidget {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        tooltip: 'Start a new poker session',
+        tooltip: 'Start a new poker game',
         onPressed: () async {
           // Prompt for an optional name
           final controller = TextEditingController();

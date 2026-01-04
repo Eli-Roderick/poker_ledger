@@ -156,7 +156,7 @@ class SessionDetailScreen extends ConsumerWidget {
                         // Inline Add Player flow - only linked players allowed
                         final existingIds = participants.map((e) => e.playerId).toSet();
                         final latestPlayers = await ref.read(sessionRepositoryProvider).getAllPlayers(activeOnly: true);
-                        // Only allow linked players (non-guests) to be added to sessions
+                        // Only allow linked players (non-guests) to be added to games
                         final freshAvailable = latestPlayers.where((p) => p.id != null && !existingIds.contains(p.id) && p.isLinked).toList();
                         if (freshAvailable.isEmpty) {
                           if (context.mounted) {
@@ -363,14 +363,14 @@ class _ParticipantCard extends ConsumerWidget {
               },
             ),
             IconButton(
-              tooltip: 'Remove from session',
+              tooltip: 'Remove from game',
               icon: const Icon(Icons.person_remove_alt_1_outlined),
               onPressed: () async {
                 final ok = await showDialog<bool>(
                   context: context,
                   builder: (_) => AlertDialog(
                     title: const Text('Remove participant?'),
-                    content: Text('Remove ${player.name} and their rebuys from this session?'),
+                    content: Text('Remove ${player.name} and their rebuys from this game?'),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
                       FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),

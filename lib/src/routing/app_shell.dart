@@ -124,7 +124,7 @@ class _OnboardingDialogState extends State<_OnboardingDialog> {
     _OnboardingPage(
       icon: Icons.people,
       title: 'Add Your Players',
-      description: 'First, add the people you play with. Search by email to link their accounts so stats sync automatically.',
+      description: 'First, add the people you play with. Search by name or email to link their accounts so stats sync automatically.',
     ),
     _OnboardingPage(
       icon: Icons.play_arrow,

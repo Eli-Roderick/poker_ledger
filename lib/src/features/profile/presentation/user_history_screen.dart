@@ -262,7 +262,7 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildMiniStat(context, 'Sessions', totalSessions.toString()),
+          _buildMiniStat(context, 'Games', totalSessions.toString()),
           _buildMiniStat(context, 'Win Rate', '${winRate.toStringAsFixed(0)}%'),
           _buildMiniStat(
             context,
@@ -303,7 +303,7 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        title: Text(session.sessionName ?? 'Session #${session.sessionId}'),
+        title: Text(session.sessionName ?? 'Game #${session.sessionId}'),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -353,13 +353,13 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
             Icon(Icons.casino_outlined, size: 64, color: Colors.grey.shade400),
             const SizedBox(height: 16),
             Text(
-              widget.showSharedOnly ? 'No shared sessions' : 'No sessions found',
+              widget.showSharedOnly ? 'No shared games' : 'No games found',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey),
             ),
             const SizedBox(height: 8),
             Text(
               widget.showSharedOnly
-                  ? 'Sessions shared to mutual groups will appear here.'
+                  ? 'Games shared to mutual groups will appear here.'
                   : 'Try adjusting your filters.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
               textAlign: TextAlign.center,

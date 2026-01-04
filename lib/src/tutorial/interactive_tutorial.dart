@@ -6,13 +6,11 @@ import 'tutorial_overlay.dart';
 
 /// Global keys for tutorial targets
 class TutorialTargets {
-  static final sessionsTab = GlobalKey();
   static final playersTab = GlobalKey();
+  static final gamesTab = GlobalKey();
   static final statsTab = GlobalKey();
   static final groupsTab = GlobalKey();
   static final profileTab = GlobalKey();
-  static final addSessionFab = GlobalKey();
-  static final addPlayerFab = GlobalKey();
 }
 
 /// Interactive tutorial that guides users through the app with spotlight effects
@@ -54,58 +52,57 @@ class _InteractiveTutorialState extends ConsumerState<InteractiveTutorial> {
     return [
       // Welcome step - no target, centered
       const TutorialStep(
-        title: 'Welcome to Poker Ledger! 🎰',
+        title: 'Welcome to Poker Ledger',
         description: 'Let\'s take a quick tour of the app to help you get started. '
-            'This will only take a minute!',
+            'This will only take a minute.',
         tooltipAlignment: Alignment.center,
         showSkip: true,
       ),
       
-      // Sessions tab
+      // Players tab (index 0)
       TutorialStep(
-        title: 'Sessions',
-        description: 'This is where you\'ll track your poker games. '
-            'Create a new session each time you play, add players, and record buy-ins and cash-outs.',
-        targetKey: TutorialTargets.sessionsTab,
+        title: 'Players',
+        description: 'Manage your players here. Add players by searching for their name or email, '
+            'and their stats will sync across all your games together.',
+        targetKey: TutorialTargets.playersTab,
         navigationIndex: 0,
         tooltipAlignment: Alignment.topCenter,
       ),
       
-      // Players tab
+      // Games tab (index 1)
       TutorialStep(
-        title: 'Players',
-        description: 'Manage your poker buddies here. Add friends by searching for their email, '
-            'and their stats will sync across all your games together.',
-        targetKey: TutorialTargets.playersTab,
+        title: 'Games',
+        description: 'This is where you\'ll track your poker games. '
+            'Create a new game each time you play, add players, and record buy-ins and cash-outs.',
+        targetKey: TutorialTargets.gamesTab,
         navigationIndex: 1,
         tooltipAlignment: Alignment.topCenter,
       ),
       
-      // Stats tab
+      // Stats tab (index 2)
       TutorialStep(
-        title: 'Statistics',
+        title: 'Stats',
         description: 'View detailed analytics about your poker performance. '
-            'See win rates, profit trends, and compare stats with friends.',
+            'See win rates, profit trends, and compare stats with other players.',
         targetKey: TutorialTargets.statsTab,
         navigationIndex: 2,
         tooltipAlignment: Alignment.topCenter,
       ),
       
-      // Groups tab
+      // Groups tab (index 3)
       TutorialStep(
         title: 'Groups',
         description: 'Create groups with your regular poker crew. '
-            'Share sessions with the group to track everyone\'s performance together.',
+            'Share games with the group to track everyone\'s performance together.',
         targetKey: TutorialTargets.groupsTab,
         navigationIndex: 3,
         tooltipAlignment: Alignment.topCenter,
       ),
       
-      // Profile tab
+      // Profile tab (index 4)
       TutorialStep(
         title: 'Profile',
-        description: 'View your profile, manage settings, and customize your experience. '
-            'You can also see who\'s following you and your activity.',
+        description: 'View your profile, manage settings, and customize your experience.',
         targetKey: TutorialTargets.profileTab,
         navigationIndex: 4,
         tooltipAlignment: Alignment.topCenter,
@@ -113,10 +110,9 @@ class _InteractiveTutorialState extends ConsumerState<InteractiveTutorial> {
       
       // Final step
       const TutorialStep(
-        title: 'You\'re All Set! 🎉',
-        description: 'That\'s the basics! Start by adding some players, then create your first session. '
-            'You can always access help from the menu in each section.\n\n'
-            'Good luck at the tables!',
+        title: 'You\'re All Set',
+        description: 'That\'s the basics. Start by adding some players, then create your first game. '
+            'You can always access help from the settings.',
         tooltipAlignment: Alignment.center,
         navigationIndex: 0,
         showSkip: false,
@@ -210,16 +206,16 @@ class _TutorialAppShell extends StatelessWidget {
         onDestinationSelected: onIndexChanged,
         destinations: [
           NavigationDestination(
-            key: TutorialTargets.sessionsTab,
-            icon: const Icon(Icons.history),
-            selectedIcon: const Icon(Icons.history),
-            label: 'Sessions',
-          ),
-          NavigationDestination(
             key: TutorialTargets.playersTab,
             icon: const Icon(Icons.people_outline),
             selectedIcon: const Icon(Icons.people),
             label: 'Players',
+          ),
+          NavigationDestination(
+            key: TutorialTargets.gamesTab,
+            icon: const Icon(Icons.casino_outlined),
+            selectedIcon: const Icon(Icons.casino),
+            label: 'Games',
           ),
           NavigationDestination(
             key: TutorialTargets.statsTab,
@@ -246,19 +242,19 @@ class _TutorialAppShell extends StatelessWidget {
   
   Widget _buildBody(BuildContext context) {
     // Show placeholder content for each tab during tutorial
-    final titles = ['Sessions', 'Players', 'Statistics', 'Groups', 'Profile'];
+    final titles = ['Players', 'Games', 'Stats', 'Groups', 'Profile'];
     final icons = [
-      Icons.history,
       Icons.people,
+      Icons.casino,
       Icons.bar_chart,
       Icons.group,
       Icons.person,
     ];
     final descriptions = [
+      'Add and manage your players',
       'Track your poker games and manage buy-ins',
-      'Add and manage your poker friends',
       'View your performance analytics',
-      'Create groups to share sessions',
+      'Create groups to share games',
       'Manage your profile and settings',
     ];
     

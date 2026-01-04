@@ -26,7 +26,7 @@ class AnalyticsScreen extends ConsumerWidget {
     final currency = NumberFormat.simpleCurrency();
 
     final currentFilters = async.valueOrNull?.filters;
-    final groupLabel = currentFilters?.groupName ?? 'My Sessions';
+    final groupLabel = currentFilters?.groupName ?? 'My Games';
     final isGroupFilter = currentFilters?.groupId != null;
     
     final groupsAsync = ref.watch(myGroupsProvider);
@@ -134,8 +134,8 @@ class AnalyticsScreen extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 32),
                     child: Text(
                       isGroupFilter
-                          ? 'Sessions shared to this group will appear here. Share a session from its detail page.'
-                          : 'Complete and finalize poker sessions to see your statistics here. Analytics show your net profit/loss, session history, and player performance.',
+                          ? 'Games shared to this group will appear here. Share a game from its detail page.'
+                          : 'Complete and finalize poker games to see your statistics here. Analytics show your net profit/loss, game history, and player performance.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Colors.grey.shade600,
@@ -159,7 +159,7 @@ class AnalyticsScreen extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: _KpiChip(
-                          label: 'Sessions',
+                          label: 'Games',
                           value: state.totalSessions.toString(),
                         ),
                       ),
@@ -221,7 +221,7 @@ class AnalyticsScreen extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8),
-                  child: Text('Sessions', style: Theme.of(context).textTheme.titleMedium),
+                  child: Text('Games', style: Theme.of(context).textTheme.titleMedium),
                 ),
               ),
               SliverList.separated(
@@ -453,8 +453,8 @@ class _AnalyticsFiltersBar extends StatelessWidget {
           child: Text('Options', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey)),
         ),
         SwitchListTile(
-          title: const Text('Include in-progress sessions'),
-          subtitle: const Text('Show sessions that haven\'t been finalized'),
+          title: const Text('Include in-progress games'),
+          subtitle: const Text('Show games that haven\'t been finalized'),
           value: filters.includeInProgress,
           onChanged: (v) => onChanged(filters.copyWith(includeInProgress: v)),
         ),
@@ -534,7 +534,7 @@ class _PlayerTile extends StatelessWidget {
       dense: true,
       leading: CircleAvatar(child: Text(p.playerName.isNotEmpty ? p.playerName[0].toUpperCase() : '?')),
       title: Text(p.playerName, overflow: TextOverflow.ellipsis),
-      subtitle: Text('${p.sessions} sessions'),
+      subtitle: Text('${p.sessions} games'),
       trailing: Text(
         currency.format(p.netCents / 100),
         style: TextStyle(color: p.netCents == 0 ? Theme.of(context).colorScheme.outline : (p.netCents > 0 ? Colors.green : Colors.red)),
@@ -618,7 +618,7 @@ void _showAllPlayersSheet(BuildContext context, AnalyticsState state) {
                             items: const [
                               DropdownMenuItem(value: _PlayerSort.netGain, child: Text('Net gain')),
                               DropdownMenuItem(value: _PlayerSort.netLoss, child: Text('Net loss')),
-                              DropdownMenuItem(value: _PlayerSort.sessions, child: Text('Sessions')),
+                              DropdownMenuItem(value: _PlayerSort.sessions, child: Text('Games')),
                               DropdownMenuItem(value: _PlayerSort.maxSingleWin, child: Text('Max single win')),
                               DropdownMenuItem(value: _PlayerSort.maxSingleLoss, child: Text('Max single loss')),
                             ],
@@ -752,12 +752,12 @@ Future<void> _exportAnalyticsCsv(AnalyticsState state) async {
   final rows = <List<dynamic>>[];
   final fmt = NumberFormat.simpleCurrency();
   rows.add(['KPI']);
-  rows.add(['Total Sessions', state.totalSessions]);
+  rows.add(['Total Games', state.totalSessions]);
   rows.add(['Total Players', state.totalPlayersSeen]);
   rows.add(['Global Net', fmt.format(state.globalNetCents / 100)]);
   rows.add([]);
   rows.add(['Players (sorted by net gain)']);
-  rows.add(['Name', 'Sessions', 'Net', 'Max single win', 'Max single loss']);
+  rows.add(['Name', 'Games', 'Net', 'Max single win', 'Max single loss']);
   for (final p in state.players) {
     rows.add([
       p.playerName,
@@ -768,8 +768,8 @@ Future<void> _exportAnalyticsCsv(AnalyticsState state) async {
     ]);
   }
   rows.add([]);
-  rows.add(['Sessions']);
-  rows.add(['Session ID', 'Players', 'Net']);
+  rows.add(['Games']);
+  rows.add(['Game ID', 'Players', 'Net']);
   for (final s in state.sessions) {
     rows.add([s.session.id ?? '', s.players, fmt.format(s.netCents / 100)]);
   }
@@ -815,8 +815,8 @@ void _showGroupFilterSheet(BuildContext context, WidgetRef ref, AsyncValue<List<
                     children: [
                       ListTile(
                         leading: const Icon(Icons.person),
-                        title: const Text('My Sessions'),
-                        subtitle: const Text('Sessions you created'),
+                        title: const Text('My Games'),
+                        subtitle: const Text('Games you created'),
                         selected: currentFilters?.groupId == null,
                         onTap: () {
                           ref.read(analyticsProvider.notifier).setFilters(
@@ -840,12 +840,12 @@ void _showGroupFilterSheet(BuildContext context, WidgetRef ref, AsyncValue<List<
                             ? [const ListTile(
                                 leading: Icon(Icons.info_outline),
                                 title: Text('No groups yet'),
-                                subtitle: Text('Create a group to see shared sessions'),
+                                subtitle: Text('Create a group to see shared games'),
                               )]
                             : groups.map((g) => ListTile(
                                 leading: const Icon(Icons.group),
                                 title: Text(g.name),
-                                subtitle: Text('${g.memberCount} member${g.memberCount == 1 ? '' : 's'} • Shared sessions'),
+                                subtitle: Text('${g.memberCount} member${g.memberCount == 1 ? '' : 's'} • Shared games'),
                                 selected: currentFilters?.groupId == g.id,
                                 onTap: () {
                                   ref.read(analyticsProvider.notifier).setFilters(

@@ -66,9 +66,9 @@ class _PlayerSummary extends StatelessWidget {
             spacing: 20,
             runSpacing: 12,
             children: [
-              stat('Sessions', sessionsCount.toString()),
+              stat('Games', sessionsCount.toString()),
               stat('Total buy-ins', currency.format(totalBuyInCents / 100)),
-              stat('Session net', currency.format(sessionNetCents / 100), valueColor: netColor(sessionNetCents)),
+              stat('Game net', currency.format(sessionNetCents / 100), valueColor: netColor(sessionNetCents)),
               stat('Quick adds', currency.format(quickAddNetCents / 100), valueColor: netColor(quickAddNetCents)),
               stat('Total net', currency.format(totalNetCents / 100), valueColor: netColor(totalNetCents)),
               stat('Max single win', currency.format(maxSingleWinCents / 100)),
@@ -251,7 +251,7 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
             final when = startedAt is String ? DateTime.parse(startedAt) : (startedAt != null ? DateTime.fromMillisecondsSinceEpoch(startedAt as int) : DateTime.now());
             items.add(_HistoryItem.session(
               sessionId: s['session_id'] as int,
-              sessionName: (s['session_name'] as String?) ?? 'Session #${s['session_id']}',
+              sessionName: (s['session_name'] as String?) ?? 'Game #${s['session_id']}',
               when: when,
               netCents: (s['net_cents'] as int?) ?? 0,
             ));
@@ -308,7 +308,7 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                       : ((it.netCents ?? 0) > 0 ? Colors.green : Colors.red);
                   return ListTile(
                     leading: const Icon(Icons.casino),
-                    title: Text(it.sessionName ?? 'Session'),
+                    title: Text(it.sessionName ?? 'Game'),
                     subtitle: Text(date),
                     trailing: Text(amount, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color)),
                   );

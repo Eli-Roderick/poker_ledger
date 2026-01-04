@@ -498,7 +498,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
                     spacing: 20,
                     runSpacing: 12,
                     children: [
-                      stat('Sessions', totalSessions.toString()),
+                      stat('Games', totalSessions.toString()),
                       stat('Total buy-ins', _currency.format(totalBuyIns / 100)),
                       stat('Total cash-outs', _currency.format(totalCashOuts / 100)),
                       stat('Total net', _currency.format(totalNet / 100), valueColor: netColor(totalNet)),
@@ -538,7 +538,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
             ),
             const SizedBox(height: 8),
             if (filteredSessions.isEmpty)
-              _buildEmptyState(context, 'No sessions yet', 'Sessions will appear here.')
+              _buildEmptyState(context, 'No games yet', 'Games will appear here.')
             else
               Column(
                 children: filteredSessions.take(3).map((s) => _buildSessionTile(context, s)).toList(),
@@ -572,7 +572,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
             ),
             const SizedBox(height: 8),
             if (sharedSessions.isEmpty)
-              _buildEmptyState(context, 'No shared sessions', 'Sessions shared to groups will appear here.')
+              _buildEmptyState(context, 'No shared games', 'Games shared to groups will appear here.')
             else
               Column(
                 children: sharedSessions.take(3).map((s) => _buildSessionTile(context, s)).toList(),
@@ -591,7 +591,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        title: Text(session.sessionName ?? 'Session #${session.sessionId}'),
+        title: Text(session.sessionName ?? 'Game #${session.sessionId}'),
         subtitle: Text(DateFormat.yMMMd().format(session.startedAt)),
         trailing: Text(
           _currency.format(session.netCents / 100),

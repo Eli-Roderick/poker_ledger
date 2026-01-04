@@ -11,18 +11,18 @@ class AuthRepository {
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
   /// Check if an email has a deleted account pending permanent deletion
+  /// Uses a SECURITY DEFINER function to bypass RLS since user isn't authenticated yet
   Future<DeletedAccountInfo?> checkDeletedAccount(String email) async {
-    final data = await _client
-        .from('profiles')
-        .select('id, display_name, deleted_at, deletion_scheduled_at')
-        .eq('email', email)
-        .not('deleted_at', 'is', null)
-        .maybeSingle();
+    final response = await _client.rpc(
+      'check_deleted_account',
+      params: {'check_email': email},
+    );
     
-    if (data == null) return null;
+    if (response == null || (response as List).isEmpty) return null;
     
+    final data = response[0];
     return DeletedAccountInfo(
-      userId: data['id'] as String,
+      userId: data['user_id'] as String,
       displayName: data['display_name'] as String?,
       deletedAt: DateTime.parse(data['deleted_at'] as String),
       deletionScheduledAt: DateTime.parse(data['deletion_scheduled_at'] as String),

@@ -100,14 +100,14 @@ class ProfileScreen extends ConsumerWidget {
           _buildPendingFollowRequests(context, ref),
           const SizedBox(height: 24),
           Text(
-            'Sessions I\'m In',
+            'Games I\'m In',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Sessions where someone else added you as a player',
+            'Games where someone else added you as a player',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
           ),
           const SizedBox(height: 12),
@@ -125,12 +125,12 @@ class ProfileScreen extends ConsumerWidget {
                           Icon(Icons.casino_outlined, size: 48, color: Colors.grey.shade400),
                           const SizedBox(height: 12),
                           Text(
-                            'No sessions yet',
+                            'No games yet',
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'When someone links you to a player in their session, it will appear here.',
+                            'When someone links you to a player in their game, it will appear here',
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
                             textAlign: TextAlign.center,
                           ),
@@ -146,7 +146,7 @@ class ProfileScreen extends ConsumerWidget {
                   final started = DateFormat.yMMMd().add_jm().format(s.startedAt);
                   return Card(
                     child: ListTile(
-                      title: Text(s.name ?? 'Session #${s.id}'),
+                      title: Text(s.name ?? 'Game #${s.id}'),
                       subtitle: Text('$started • By ${sw.ownerName}'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
