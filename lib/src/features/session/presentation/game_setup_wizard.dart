@@ -296,14 +296,17 @@ class _PlayersPage extends ConsumerWidget {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
               ),
               const SizedBox(height: 16),
-              // Preset buy-in buttons - 3 buttons, evenly spaced
+              // Preset buy-in buttons - 3 buttons, evenly spaced with outlines
               Row(
                 children: [20, 50, 100].map((amount) => 
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: TextButton(
+                      child: OutlinedButton(
                         onPressed: () => setDialogState(() => buyInController.text = '$amount.00'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
                         child: Text('\$$amount', maxLines: 1),
                       ),
                     ),
