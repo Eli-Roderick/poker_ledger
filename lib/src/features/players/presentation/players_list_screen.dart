@@ -6,6 +6,7 @@ import '../../analytics/data/analytics_providers.dart';
 import 'package:poker_ledger/src/features/players/data/players_providers.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
 import 'package:poker_ledger/src/features/players/domain/player.dart';
+import 'package:poker_ledger/src/features/profile/presentation/user_profile_screen.dart';
 
 class PlayersListScreen extends ConsumerStatefulWidget {
   static const routeName = '/players';
@@ -299,20 +300,22 @@ class PlayerTile extends ConsumerWidget {
               Text('Legacy guest', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.orange)),
           ],
         ),
-        onTap: () async {
+        onTap: () {
           if (player.id == null) return;
-          final edited = await showDialog<_EditPlayerResult?>(
-            context: context,
-            builder: (_) => _EditPlayerDialog(player: player),
-          );
-          if (edited != null) {
-            await ref.read(playersListProvider.notifier).updatePlayer(
-                  id: player.id!,
-                  name: edited.name.trim(),
-                  email: edited.email?.trim(),
-                  phone: edited.phone?.trim(),
-                  notes: edited.notes?.trim(),
-                );
+          // Navigate to user profile if linked, otherwise show edit dialog
+          if (player.isLinked && player.linkedUserId != null) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => UserProfileScreen(
+                  userId: player.linkedUserId!,
+                  initialDisplayName: player.linkedUserDisplayName ?? player.name,
+                  playerId: player.id,
+                ),
+              ),
+            );
+          } else {
+            // For guest players, show edit dialog
+            _showEditDialog(context, ref, player);
           }
         },
         trailing: Row(
@@ -367,6 +370,23 @@ class PlayerTile extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+Future<void> _showEditDialog(BuildContext context, WidgetRef ref, Player player) async {
+  if (player.id == null) return;
+  final edited = await showDialog<_EditPlayerResult?>(
+    context: context,
+    builder: (_) => _EditPlayerDialog(player: player),
+  );
+  if (edited != null) {
+    await ref.read(playersListProvider.notifier).updatePlayer(
+          id: player.id!,
+          name: edited.name.trim(),
+          email: edited.email?.trim(),
+          phone: edited.phone?.trim(),
+          notes: edited.notes?.trim(),
+        );
   }
 }
 

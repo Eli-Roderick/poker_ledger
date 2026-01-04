@@ -7,7 +7,8 @@ import '../../auth/providers/app_settings_providers.dart';
 import '../../auth/data/admin_config.dart';
 import '../../features/session/data/session_providers.dart';
 import '../../features/session/domain/session_models.dart';
-import '../../features/session/presentation/session_detail_screen.dart';
+import '../../features/session/presentation/session_summary_screen.dart';
+import '../../features/profile/data/profile_providers.dart';
 
 final myLinkedSessionsProvider = FutureProvider<List<SessionWithOwner>>((ref) async {
   // Watch auth state to auto-refresh when user changes
@@ -139,6 +140,8 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ],
+          // Pending follow requests section
+          _buildPendingFollowRequests(context, ref),
           const SizedBox(height: 24),
           Text(
             'Sessions I\'m In',
@@ -191,7 +194,7 @@ class ProfileScreen extends ConsumerWidget {
                       subtitle: Text('$started • By ${sw.ownerName}'),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => SessionDetailScreen(sessionId: s.id!)),
+                        MaterialPageRoute(builder: (_) => SessionSummaryScreen(sessionId: s.id!)),
                       ),
                     ),
                   );
@@ -240,6 +243,82 @@ class ProfileScreen extends ConsumerWidget {
   String _formatDate(DateTime date) {
     final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  Widget _buildPendingFollowRequests(BuildContext context, WidgetRef ref) {
+    final pendingRequestsAsync = ref.watch(pendingFollowRequestsProvider);
+    
+    return pendingRequestsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (requests) {
+        if (requests.isEmpty) return const SizedBox.shrink();
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Text(
+                  'Follow Requests',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${requests.length}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ...requests.map((request) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  child: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
+                ),
+                title: Text(request.followerName ?? 'Unknown'),
+                subtitle: Text('Wants to follow you'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.check_circle, color: Colors.green),
+                      onPressed: () async {
+                        final repo = ref.read(profileRepositoryProvider);
+                        await repo.acceptFollowRequest(request.id);
+                        ref.invalidate(pendingFollowRequestsProvider);
+                      },
+                      tooltip: 'Accept',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.cancel, color: Colors.red),
+                      onPressed: () async {
+                        final repo = ref.read(profileRepositoryProvider);
+                        await repo.rejectFollowRequest(request.id);
+                        ref.invalidate(pendingFollowRequestsProvider);
+                      },
+                      tooltip: 'Reject',
+                    ),
+                  ],
+                ),
+              ),
+            )),
+          ],
+        );
+      },
+    );
   }
 }
 
