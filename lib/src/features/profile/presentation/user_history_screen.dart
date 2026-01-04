@@ -26,7 +26,8 @@ class UserHistoryScreen extends ConsumerStatefulWidget {
 
 class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
   int? _selectedGroupId;
-  DateTimeRange? _dateRange;
+  DateTime? _startDate;
+  DateTime? _endDate;
   final _currency = NumberFormat.simpleCurrency();
 
   @override
@@ -45,11 +46,18 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.showSharedOnly ? 'Shared Sessions' : 'History'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Date filters',
+            onPressed: () => _showDateFiltersSheet(context),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          // Filters section
-          _buildFiltersSection(context, mutualGroupsAsync),
+          // Group filter dropdown
+          _buildGroupFilter(context, mutualGroupsAsync),
           
           // Stats summary
           _buildStatsSummary(context, statsAsync),
@@ -68,11 +76,11 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
                 }
                 
                 // Filter by date range if set
-                if (_dateRange != null) {
-                  filteredSessions = filteredSessions.where((s) {
-                    return !s.startedAt.isBefore(_dateRange!.start) &&
-                           !s.startedAt.isAfter(_dateRange!.end.add(const Duration(days: 1)));
-                  }).toList();
+                if (_startDate != null) {
+                  filteredSessions = filteredSessions.where((s) => !s.startedAt.isBefore(_startDate!)).toList();
+                }
+                if (_endDate != null) {
+                  filteredSessions = filteredSessions.where((s) => !s.startedAt.isAfter(_endDate!.add(const Duration(days: 1)))).toList();
                 }
                 
                 if (filteredSessions.isEmpty) {
@@ -100,83 +108,144 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     );
   }
 
-  Widget _buildFiltersSection(BuildContext context, AsyncValue<List<Map<String, dynamic>>> groupsAsync) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(color: Theme.of(context).dividerColor),
+  Widget _buildGroupFilter(BuildContext context, AsyncValue<List<Map<String, dynamic>>> groupsAsync) {
+    return groupsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (groups) {
+        if (groups.isEmpty) return const SizedBox.shrink();
+        
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            border: Border(
+              bottom: BorderSide(color: Theme.of(context).dividerColor),
+            ),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<int?>(
+                value: _selectedGroupId,
+                isExpanded: true,
+                isDense: true,
+                hint: const Text('All mutual groups'),
+                items: [
+                  const DropdownMenuItem<int?>(value: null, child: Text('All mutual groups')),
+                  ...groups.map((g) => DropdownMenuItem<int?>(
+                        value: g['id'] as int,
+                        child: Text(g['name'] as String),
+                      )),
+                ],
+                onChanged: (value) {
+                  setState(() => _selectedGroupId = value);
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showDateFiltersSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                'Filters',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Date Range', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey)),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _DateButton(
+                      label: 'Start Date',
+                      date: _startDate,
+                      onTap: () async {
+                        final picked = await _pickDate(context, _startDate ?? DateTime.now());
+                        if (picked != null) {
+                          setState(() => _startDate = picked);
+                          if (context.mounted) Navigator.pop(context);
+                        }
+                      },
+                      onClear: _startDate != null ? () {
+                        setState(() => _startDate = null);
+                        Navigator.pop(context);
+                      } : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _DateButton(
+                      label: 'End Date',
+                      date: _endDate,
+                      onTap: () async {
+                        final picked = await _pickDate(context, _endDate ?? DateTime.now());
+                        if (picked != null) {
+                          setState(() => _endDate = picked);
+                          if (context.mounted) Navigator.pop(context);
+                        }
+                      },
+                      onClear: _endDate != null ? () {
+                        setState(() => _endDate = null);
+                        Navigator.pop(context);
+                      } : null,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: FilledButton.tonal(
+                onPressed: () {
+                  setState(() {
+                    _startDate = null;
+                    _endDate = null;
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Clear All Filters'),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
         ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Group filter
-          groupsAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (groups) {
-              if (groups.isEmpty) return const SizedBox.shrink();
-              
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<int?>(
-                    value: _selectedGroupId,
-                    isExpanded: true,
-                    isDense: true,
-                    hint: const Text('All mutual groups'),
-                    items: [
-                      const DropdownMenuItem<int?>(value: null, child: Text('All mutual groups')),
-                      ...groups.map((g) => DropdownMenuItem<int?>(
-                            value: g['id'] as int,
-                            child: Text(g['name'] as String),
-                          )),
-                    ],
-                    onChanged: (value) {
-                      setState(() => _selectedGroupId = value);
-                    },
-                  ),
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          
-          // Date range filter
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.date_range, size: 18),
-                  label: Text(
-                    _dateRange == null
-                        ? 'All time'
-                        : '${DateFormat.MMMd().format(_dateRange!.start)} - ${DateFormat.MMMd().format(_dateRange!.end)}',
-                  ),
-                  onPressed: () => _selectDateRange(context),
-                ),
-              ),
-              if (_dateRange != null) ...[
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.clear),
-                  tooltip: 'Clear date filter',
-                  onPressed: () {
-                    setState(() => _dateRange = null);
-                  },
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
     );
+  }
+
+  Future<DateTime?> _pickDate(BuildContext context, DateTime initial) async {
+    final now = DateTime.now();
+    final first = DateTime(now.year - 5);
+    final last = DateTime(now.year + 5);
+    return showDatePicker(context: context, initialDate: initial, firstDate: first, lastDate: last);
   }
 
   Widget _buildStatsSummary(BuildContext context, AsyncValue<UserProfileStats> statsAsync) {
@@ -306,20 +375,45 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     );
   }
 
-  Future<void> _selectDateRange(BuildContext context) async {
-    final now = DateTime.now();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: now,
-      initialDateRange: _dateRange ?? DateTimeRange(
-        start: now.subtract(const Duration(days: 30)),
-        end: now,
+}
+
+class _DateButton extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final VoidCallback onTap;
+  final VoidCallback? onClear;
+  const _DateButton({required this.label, required this.date, required this.onTap, this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    final text = date == null ? 'Any' : DateFormat.yMMMd().format(date!);
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey)),
+                const SizedBox(height: 2),
+                Text(text, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+          ),
+          if (onClear != null)
+            GestureDetector(
+              onTap: onClear,
+              child: const Icon(Icons.close, size: 18),
+            )
+          else
+            const Icon(Icons.calendar_today, size: 18),
+        ],
       ),
     );
-    
-    if (picked != null) {
-      setState(() => _dateRange = picked);
-    }
   }
 }

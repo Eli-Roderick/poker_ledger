@@ -29,6 +29,13 @@ class UserProfileScreen extends ConsumerStatefulWidget {
 class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   int? _selectedGroupId;
   final _currency = NumberFormat.simpleCurrency();
+  late String _currentPlayerName;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPlayerName = widget.playerName ?? widget.initialDisplayName ?? 'Unknown';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +47,26 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                _currentPlayerName,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (widget.playerId != null)
+              IconButton(
+                icon: const Icon(Icons.edit, size: 18),
+                tooltip: 'Edit name',
+                onPressed: () => _showEditNameDialog(context),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+          ],
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -52,15 +78,22 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Profile header with name, email, edit button, and follow button
-            _buildProfileHeader(context, statsAsync, followStatusAsync),
+            // Profile header with account name, email
+            _buildProfileHeader(context, statsAsync),
             const SizedBox(height: 16),
+
+            // Follow section
+            _buildFollowSection(context, followStatusAsync),
+            const SizedBox(height: 16),
+
+            // Warning about following for private stats
+            _buildFollowWarning(context, followStatusAsync),
 
             // Group filter (only mutual groups)
             _buildGroupFilter(context, mutualGroupsAsync),
             const SizedBox(height: 24),
 
-            // Summary stats
+            // Summary stats (like old profile)
             _buildSummarySection(context, statsAsync),
             const SizedBox(height: 24),
 
@@ -76,70 +109,45 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     );
   }
 
-  Widget _buildProfileHeader(
-    BuildContext context,
-    AsyncValue<UserProfileStats> statsAsync,
-    AsyncValue<Follow?> followStatusAsync,
-  ) {
+  Widget _buildProfileHeader(BuildContext context, AsyncValue<UserProfileStats> statsAsync) {
     final displayName = statsAsync.valueOrNull?.displayName ?? widget.initialDisplayName ?? 'Unknown';
     final email = statsAsync.valueOrNull?.email;
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
+        child: Row(
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Avatar
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  child: Icon(
-                    Icons.person,
-                    size: 32,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Name and email
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              widget.playerName ?? displayName,
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                          ),
-                          if (widget.playerId != null)
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, size: 20),
-                              tooltip: 'Edit name',
-                              onPressed: () => _showEditNameDialog(context),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                        ],
-                      ),
-                      if (email != null)
-                        Text(
-                          email,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
+            CircleAvatar(
+              radius: 32,
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              child: Icon(
+                Icons.person,
+                size: 32,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    displayName,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
-                    ],
                   ),
-                ),
-                // Follow button
-                _buildFollowButton(context, followStatusAsync),
-              ],
+                  if (email != null)
+                    Text(
+                      email,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
             ),
           ],
         ),
@@ -147,43 +155,82 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     );
   }
 
-  Widget _buildFollowButton(BuildContext context, AsyncValue<Follow?> followStatusAsync) {
+  Widget _buildFollowSection(BuildContext context, AsyncValue<Follow?> followStatusAsync) {
     return followStatusAsync.when(
-      loading: () => const SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      ),
+      loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (follow) {
         if (follow == null) {
-          return IconButton(
-            icon: const Icon(Icons.person_add),
-            tooltip: 'Request to follow',
+          return FilledButton.icon(
             onPressed: () => _sendFollowRequest(context),
+            icon: const Icon(Icons.person_add),
+            label: const Text('Request to Follow'),
           );
         }
 
         switch (follow.status) {
           case FollowStatus.pending:
-            return IconButton(
-              icon: const Icon(Icons.hourglass_empty),
-              tooltip: 'Request pending',
+            return OutlinedButton.icon(
               onPressed: () => _cancelFollowRequest(context),
+              icon: const Icon(Icons.hourglass_empty),
+              label: const Text('Request Pending'),
             );
           case FollowStatus.accepted:
-            return IconButton(
-              icon: const Icon(Icons.check_circle, color: Colors.green),
-              tooltip: 'Following - tap to unfollow',
-              onPressed: () => _unfollowUser(context),
+            return Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                const SizedBox(width: 8),
+                const Text('Following'),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => _unfollowUser(context),
+                  child: const Text('Unfollow'),
+                ),
+              ],
             );
           case FollowStatus.rejected:
-            return IconButton(
-              icon: const Icon(Icons.person_add),
-              tooltip: 'Request again',
+            return OutlinedButton.icon(
               onPressed: () => _sendFollowRequest(context),
+              icon: const Icon(Icons.person_add),
+              label: const Text('Request Again'),
             );
         }
+      },
+    );
+  }
+
+  Widget _buildFollowWarning(BuildContext context, AsyncValue<Follow?> followStatusAsync) {
+    return followStatusAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (follow) {
+        // Only show warning if not following
+        if (follow?.status == FollowStatus.accepted) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Follow this user to see their private stats',
+                    style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       },
     );
   }
@@ -232,109 +279,76 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   }
 
   Widget _buildSummarySection(BuildContext context, AsyncValue<UserProfileStats> statsAsync) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Summary',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 12),
-        statsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('Error: $e'),
-          data: (stats) {
-            final netColor = stats.netProfitCents == 0
-                ? Theme.of(context).colorScheme.outline
-                : (stats.netProfitCents > 0 ? Colors.green : Colors.red);
+    return statsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Text('Error: $e'),
+      data: (stats) {
+        final netColor = stats.netProfitCents == 0
+            ? Theme.of(context).colorScheme.outline
+            : (stats.netProfitCents > 0 ? Colors.green : Colors.red);
 
-            return Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // Net profit/loss - prominent
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          _currency.format(stats.netProfitCents / 100),
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: netColor,
-                              ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      'Net Profit/Loss',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const SizedBox(height: 12),
-                    // Stats grid
-                    Row(
-                      children: [
-                        _buildStatItem(context, 'Sessions', stats.totalSessions.toString()),
-                        _buildStatItem(context, 'Win Rate', '${stats.winRate.toStringAsFixed(0)}%'),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _buildStatItem(context, 'Buy-ins', _currency.format(stats.totalBuyInsCents / 100)),
-                        _buildStatItem(context, 'Cash-outs', _currency.format(stats.totalCashOutsCents / 100)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _buildStatItem(
-                          context,
-                          'Best Session',
-                          _currency.format(stats.biggestWinCents / 100),
-                          valueColor: stats.biggestWinCents > 0 ? Colors.green : null,
-                        ),
-                        _buildStatItem(
-                          context,
-                          'Worst Session',
-                          _currency.format(stats.biggestLossCents / 100),
-                          valueColor: stats.biggestLossCents < 0 ? Colors.red : null,
-                        ),
-                      ],
-                    ),
-                  ],
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Summary',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatItem(BuildContext context, String label, String value, {Color? valueColor}) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: valueColor,
+                const SizedBox(height: 16),
+                _InfoRow(
+                  icon: Icons.casino_outlined,
+                  label: 'Sessions Played',
+                  value: stats.totalSessions.toString(),
                 ),
+                const Divider(),
+                _InfoRow(
+                  icon: Icons.trending_up,
+                  label: 'Win Rate',
+                  value: '${stats.winRate.toStringAsFixed(0)}%',
+                ),
+                const Divider(),
+                _InfoRow(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: 'Total Buy-ins',
+                  value: _currency.format(stats.totalBuyInsCents / 100),
+                ),
+                const Divider(),
+                _InfoRow(
+                  icon: Icons.payments_outlined,
+                  label: 'Total Cash-outs',
+                  value: _currency.format(stats.totalCashOutsCents / 100),
+                ),
+                const Divider(),
+                _InfoRow(
+                  icon: stats.netProfitCents >= 0 ? Icons.arrow_upward : Icons.arrow_downward,
+                  label: 'Net Profit/Loss',
+                  value: _currency.format(stats.netProfitCents / 100),
+                  valueColor: netColor,
+                ),
+                const Divider(),
+                _InfoRow(
+                  icon: Icons.emoji_events_outlined,
+                  label: 'Best Session',
+                  value: _currency.format(stats.biggestWinCents / 100),
+                  valueColor: stats.biggestWinCents > 0 ? Colors.green : null,
+                ),
+                const Divider(),
+                _InfoRow(
+                  icon: Icons.trending_down,
+                  label: 'Worst Session',
+                  value: _currency.format(stats.biggestLossCents / 100),
+                  valueColor: stats.biggestLossCents < 0 ? Colors.red : null,
+                ),
+              ],
+            ),
           ),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.outline,
-                ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -488,7 +502,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
   Future<void> _showEditNameDialog(BuildContext context) async {
     if (widget.playerId == null) return;
 
-    final controller = TextEditingController(text: widget.playerName ?? widget.initialDisplayName);
+    final controller = TextEditingController(text: _currentPlayerName);
 
     final newName = await showDialog<String?>(
       context: context,
@@ -520,6 +534,9 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
             id: widget.playerId!,
             name: newName,
           );
+      setState(() {
+        _currentPlayerName = newName;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Name updated')),
@@ -600,5 +617,51 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
         }
       }
     }
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.grey),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey,
+                      ),
+                ),
+                Text(
+                  value,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: valueColor,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

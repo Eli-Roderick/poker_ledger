@@ -59,8 +59,8 @@ class ProfileRepository {
         .from('session_players')
         .select('''
           session_id,
-          buy_ins_cents,
-          cash_outs_cents,
+          buy_in_cents_total,
+          cash_out_cents,
           players!inner(linked_user_id)
         ''')
         .inFilter('session_id', accessibleSessionIds)
@@ -79,8 +79,8 @@ class ProfileRepository {
       if (sessionIds.contains(sessionId)) continue;
       sessionIds.add(sessionId);
       
-      final buyIns = sp['buy_ins_cents'] as int? ?? 0;
-      final cashOuts = sp['cash_outs_cents'] as int? ?? 0;
+      final buyIns = sp['buy_in_cents_total'] as int? ?? 0;
+      final cashOuts = sp['cash_out_cents'] as int? ?? 0;
       final net = cashOuts - buyIns;
       
       totalSessions++;
@@ -227,7 +227,7 @@ class ProfileRepository {
     // Get session_players data for target user
     final sessionPlayersData = await _client
         .from('session_players')
-        .select('session_id, buy_ins_cents, cash_outs_cents, players!inner(linked_user_id)')
+        .select('session_id, buy_in_cents_total, cash_out_cents, players!inner(linked_user_id)')
         .inFilter('session_id', accessibleSessionIds)
         .eq('players.linked_user_id', targetUserId);
 
@@ -250,8 +250,8 @@ class ProfileRepository {
     return sessions.map((s) {
       final sessionId = s['id'] as int;
       final sp = spMap[sessionId];
-      final buyIns = sp?['buy_ins_cents'] as int? ?? 0;
-      final cashOuts = sp?['cash_outs_cents'] as int? ?? 0;
+      final buyIns = sp?['buy_in_cents_total'] as int? ?? 0;
+      final cashOuts = sp?['cash_out_cents'] as int? ?? 0;
       final sg = groupMap[sessionId];
       
       return UserSessionSummary(
