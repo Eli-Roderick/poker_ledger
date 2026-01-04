@@ -80,9 +80,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account restored! You can now sign in.')),
+          const SnackBar(content: Text('Account restored! Signing you in...')),
         );
       }
+      
+      // Wait a moment for the trigger to unban the account
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      // Automatically sign in after restoration
+      await _signIn();
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to restore account: $e';

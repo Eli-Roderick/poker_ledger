@@ -67,19 +67,27 @@ class AuthRepository {
     required String email,
     required String password,
   }) async {
-    // Check if account is deleted before allowing sign in
-    final deletedAccount = await checkDeletedAccount(email);
-    if (deletedAccount != null) {
-      throw AccountDeletedException(
-        'This account has been deleted and is scheduled for permanent removal in ${deletedAccount.daysRemaining} days.',
-        deletedAccount,
+    // Try to sign in first - this validates the password
+    try {
+      return await _client.auth.signInWithPassword(
+        email: email,
+        password: password,
       );
+    } catch (e) {
+      // If sign in fails, check if it's because the account is deleted/banned
+      // Only show restore option if password was correct (account is banned)
+      if (e.toString().contains('banned') || e.toString().contains('Email not confirmed')) {
+        final deletedAccount = await checkDeletedAccount(email);
+        if (deletedAccount != null) {
+          throw AccountDeletedException(
+            'This account has been deleted and is scheduled for permanent removal in ${deletedAccount.daysRemaining} days.',
+            deletedAccount,
+          );
+        }
+      }
+      // Re-throw the original error (wrong password, etc.)
+      rethrow;
     }
-    
-    return await _client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
   }
 
   Future<void> signOut() async {
