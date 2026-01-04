@@ -185,11 +185,16 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
         final pid = r['player_id'] as int;
         final name = (r['player_name'] as String?) ?? 'Unknown';
         final linkedUserId = r['linked_user_id'] as String?;
+        final wasLinkedToDeletedUser = r['was_linked_to_deleted_user'] as bool? ?? false;
         final b = (r['buy_in_cents_total'] as int?) ?? 0;
         final c = (r['cash_out_cents'] as int?) ?? 0;
         final net = c - b;
         buy += b;
         cash += c;
+        
+        // Skip players who were linked to a deleted user - they should not appear in leaderboards
+        // They will still show as guests in session details, but not in aggregate stats
+        if (wasLinkedToDeletedUser) continue;
         
         // Use linked_user_id as key if available, otherwise use player_id
         // This merges stats for players linked to the same profile
@@ -235,15 +240,18 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
     // Add quick-add totals to player nets (does not change sessions/max win/max loss)
     // Quick-adds are only for the current user's own players, so use player_id as key
     final quickAddRows = await repo.listQuickAddSumsByPlayer();
-    // Map player id -> name and active for players not present in sessions (include deactivated for historical quick-adds)
+    // Map player id -> name, active, and wasLinkedToDeletedUser for players not present in sessions
     final allPlayers = await repo.getAllPlayers();
     final nameById = {for (final pl in allPlayers) pl.id!: pl.name};
     final activeById = {for (final pl in allPlayers) pl.id!: (pl.active)};
     final linkedUserById = {for (final pl in allPlayers) pl.id!: pl.linkedUserId};
+    final wasDeletedById = {for (final pl in allPlayers) pl.id!: pl.wasLinkedToDeletedUser};
     for (final row in quickAddRows) {
       final pid = row['player_id'] as int;
       final adj = (row['total_cents'] as int?) ?? 0;
       if (adj == 0) continue;
+      // Skip players who were linked to a deleted user
+      if (wasDeletedById[pid] == true) continue;
       // Use linked_user_id if available, otherwise player_id
       final linkedUserId = linkedUserById[pid];
       final key = linkedUserId ?? 'player_$pid';

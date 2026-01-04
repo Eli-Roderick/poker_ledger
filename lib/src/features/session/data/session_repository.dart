@@ -450,7 +450,7 @@ class SessionRepository {
     
     final data = await _client
         .from('session_players')
-        .select('id, session_id, player_id, buy_in_cents_total, cash_out_cents, paid_upfront, settlement_done, players(name, email, active, linked_user_id)')
+        .select('id, session_id, player_id, buy_in_cents_total, cash_out_cents, paid_upfront, settlement_done, players(name, email, active, linked_user_id, was_linked_to_deleted_user)')
         .inFilter('session_id', sessionIds);
     
     // Transform the nested player data to flat structure
@@ -468,6 +468,7 @@ class SessionRepository {
         'player_email': player?['email'],
         'player_active': player?['active'],
         'linked_user_id': player?['linked_user_id'],
+        'was_linked_to_deleted_user': player?['was_linked_to_deleted_user'] ?? false,
       };
     }).toList();
   }
