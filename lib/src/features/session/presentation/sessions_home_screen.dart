@@ -29,7 +29,7 @@ class SessionsHomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sessionsAsync = ref.watch(sessionsListProvider);
     final filter = ref.watch(sessionsFilterProvider);
-    String _filterSummary(SessionsFilter f) {
+    String filterSummary(SessionsFilter f) {
       final parts = <String>[];
       if (f.range != null) {
         parts.add('${DateFormat.MMMd().format(f.range!.start)}–${DateFormat.MMMd().format(f.range!.end)}');
@@ -70,7 +70,7 @@ class SessionsHomeScreen extends ConsumerWidget {
               label: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 120),
                 child: Text(
-                  _filterSummary(filter),
+                  filterSummary(filter),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
                 ),

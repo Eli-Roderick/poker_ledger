@@ -75,7 +75,7 @@ class _GameSetupWizardState extends ConsumerState<GameSetupWizard> {
         error: (e, st) => Center(child: Text('Error: $e')),
         data: (data) {
           final session = data.session;
-          final hasSettlementMode = session.settlementMode != null;
+          final hasSettlementMode = session.settlementMode.isNotEmpty;
           final hasEnoughPlayers = data.participants.length >= 2;
 
           return Column(

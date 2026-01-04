@@ -112,7 +112,6 @@ class _PlayersListScreenState extends ConsumerState<PlayersListScreen> {
             await ref.read(playersListProvider.notifier).addPlayer(
                   name: created.name.trim(),
                   email: created.email?.trim(),
-                  phone: created.phone?.trim(),
                   linkedUserId: created.linkedUserId,
                 );
             // Clear search after adding a player
@@ -566,14 +565,14 @@ class _LinkUserSheetState extends ConsumerState<_LinkUserSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.15),
+                      color: Colors.green.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.withOpacity(0.3)),
+                      border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
-                          backgroundColor: Colors.green.withOpacity(0.2),
+                          backgroundColor: Colors.green.withValues(alpha: 0.2),
                           child: const Icon(Icons.person, color: Colors.green),
                         ),
                         const SizedBox(width: 12),
@@ -720,9 +719,8 @@ class ListEmptyState extends StatelessWidget {
 class _CreatePlayerResult {
   final String name;
   final String? email;
-  final String? phone;
   final String? linkedUserId;
-  const _CreatePlayerResult({required this.name, this.email, this.phone, this.linkedUserId});
+  const _CreatePlayerResult({required this.name, this.email, this.linkedUserId});
 }
 
 class _AddPlayerSheet extends ConsumerStatefulWidget {
@@ -894,14 +892,14 @@ class _AddPlayerSheetState extends ConsumerState<_AddPlayerSheet> {
                   child: Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.15),
+                      color: Colors.green.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.withOpacity(0.3)),
+                      border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
                         CircleAvatar(
-                          backgroundColor: Colors.green.withOpacity(0.2),
+                          backgroundColor: Colors.green.withValues(alpha: 0.2),
                           child: const Icon(Icons.person, color: Colors.green),
                         ),
                         const SizedBox(width: 12),

@@ -101,7 +101,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           }
 
           // Helper to compute balances from current text fields (live)
-          List<_Balance> _computeBalances() {
+          List<_Balance> computeBalances() {
             return participants.map((p) {
               final raw = _controllers[p.id]!.text.trim();
               final entered = raw.isEmpty ? (p.cashOutCents ?? 0) : _parseMoneyToCents(raw);
@@ -113,7 +113,7 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
           final isBanker = data.session.settlementMode == 'banker' && data.session.bankerSessionPlayerId != null;
           final bankerSpId = data.session.bankerSessionPlayerId;
 
-          void _recomputeSettlement() {
+          void recomputeSettlement() {
             if (isBanker && bankerSpId != null) {
               _bankerLinesNotifier.value = _computeBankerSettlementFromParticipants(
                 // synthesize participants with live cash-out values for accurate preview
@@ -131,19 +131,19 @@ class _SessionSummaryScreenState extends ConsumerState<SessionSummaryScreen> {
                 bankerSpId,
               );
             } else {
-              _transfersNotifier.value = _computeSettlement(_computeBalances());
+              _transfersNotifier.value = _computeSettlement(computeBalances());
             }
           }
 
           // Attach listeners once per controller to update settlement preview
           for (final p in participants) {
             final c = _controllers[p.id]!;
-            c.removeListener(_recomputeSettlement);
-            c.addListener(_recomputeSettlement);
+            c.removeListener(recomputeSettlement);
+            c.addListener(recomputeSettlement);
           }
 
           // Initial compute
-          _recomputeSettlement();
+          recomputeSettlement();
 
           // Totals for zero-sum check
           final totalBuyIns = participants.fold<int>(0, (sum, p) => sum + p.buyInCentsTotal);
