@@ -81,13 +81,13 @@ final accessibleGroupsProvider = FutureProvider<List<Map<String, dynamic>>>((ref
   return repo.getAccessibleGroups();
 });
 
-/// Provider for all nicknames
-final nicknamesProvider = FutureProvider<Map<int, String>>((ref) async {
+/// Provider for mutual groups between current user and target user
+final mutualGroupsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, targetUserId) async {
   final user = ref.watch(currentUserProvider);
-  if (user == null) return {};
+  if (user == null) return [];
   
   final repo = ref.read(profileRepositoryProvider);
-  return repo.getAllNicknames();
+  return repo.getMutualGroups(targetUserId);
 });
 
 /// Parameters for user profile queries

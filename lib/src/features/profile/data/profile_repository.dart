@@ -386,45 +386,54 @@ class ProfileRepository {
     }).toList();
   }
 
-  // ============ NICKNAME MANAGEMENT ============
-
-  /// Get nickname for a player
-  Future<String?> getNickname(int playerId) async {
-    final data = await _client
-        .from('player_nicknames')
-        .select('nickname')
-        .eq('user_id', _currentUserId)
-        .eq('player_id', playerId)
-        .maybeSingle();
-    return data?['nickname'] as String?;
-  }
-
-  /// Set or update nickname for a player
-  Future<void> setNickname(int playerId, String nickname) async {
-    await _client.from('player_nicknames').upsert({
-      'user_id': _currentUserId,
-      'player_id': playerId,
-      'nickname': nickname,
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'user_id,player_id');
-  }
-
-  /// Remove nickname for a player
-  Future<void> removeNickname(int playerId) async {
-    await _client
-        .from('player_nicknames')
-        .delete()
-        .eq('user_id', _currentUserId)
-        .eq('player_id', playerId);
-  }
-
-  /// Get all nicknames for current user
-  Future<Map<int, String>> getAllNicknames() async {
-    final data = await _client
-        .from('player_nicknames')
-        .select('player_id, nickname')
+  /// Get groups that both current user and target user are in (mutual groups)
+  Future<List<Map<String, dynamic>>> getMutualGroups(String targetUserId) async {
+    // Get current user's groups (owned + member)
+    final myOwnedGroups = await _client
+        .from('groups')
+        .select('id')
+        .eq('owner_id', _currentUserId);
+    
+    final myMemberGroups = await _client
+        .from('group_members')
+        .select('group_id')
         .eq('user_id', _currentUserId);
-    return {for (final n in data) n['player_id'] as int: n['nickname'] as String};
+    
+    final myGroupIds = <int>{
+      ...myOwnedGroups.map((g) => g['id'] as int),
+      ...myMemberGroups.map((g) => g['group_id'] as int),
+    };
+
+    if (myGroupIds.isEmpty) return [];
+
+    // Get target user's groups (owned + member)
+    final targetOwnedGroups = await _client
+        .from('groups')
+        .select('id')
+        .eq('owner_id', targetUserId);
+    
+    final targetMemberGroups = await _client
+        .from('group_members')
+        .select('group_id')
+        .eq('user_id', targetUserId);
+    
+    final targetGroupIds = <int>{
+      ...targetOwnedGroups.map((g) => g['id'] as int),
+      ...targetMemberGroups.map((g) => g['group_id'] as int),
+    };
+
+    // Find intersection (mutual groups)
+    final mutualIds = myGroupIds.intersection(targetGroupIds).toList();
+    
+    if (mutualIds.isEmpty) return [];
+
+    // Get group details
+    final groups = await _client
+        .from('groups')
+        .select('id, name')
+        .inFilter('id', mutualIds);
+    
+    return groups;
   }
 
   /// Get groups that current user has access to (for filtering)

@@ -310,6 +310,7 @@ class PlayerTile extends ConsumerWidget {
                   userId: player.linkedUserId!,
                   initialDisplayName: player.linkedUserDisplayName ?? player.name,
                   playerId: player.id,
+                  playerName: player.name,
                 ),
               ),
             );
