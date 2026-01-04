@@ -7,7 +7,7 @@ import '../data/admin_config.dart';
 import '../../routing/app_shell.dart';
 import '../../migration/data/migration_service.dart';
 import '../../migration/presentation/migration_screen.dart';
-import '../../profile/presentation/settings_screen.dart';
+import '../../tutorial/interactive_tutorial.dart';
 import '../../theme/theme_provider.dart';
 import 'login_screen.dart';
 import 'maintenance_screen.dart';
@@ -85,8 +85,8 @@ class _AuthGateState extends ConsumerState<AuthGate> {
           return tutorialAsync.when(
             data: (completed) {
               if (!completed) {
-                // Show tutorial for new users
-                return const TutorialScreen();
+                // Show interactive tutorial for new users
+                return const InteractiveTutorial();
               }
               return const AppShell();
             },

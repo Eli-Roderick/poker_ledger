@@ -46,8 +46,9 @@ class PlayersListNotifier extends AsyncNotifier<List<Player>> {
   }
 
   /// Search through user's linked players (for group invites)
-  Future<List<Player>> searchLinkedPlayers(String query) async {
-    return _repo.searchLinkedPlayers(query);
+  /// If excludeGroupId is provided, excludes players already in that group
+  Future<List<Player>> searchLinkedPlayers(String query, {int? excludeGroupId}) async {
+    return _repo.searchLinkedPlayers(query, excludeGroupId: excludeGroupId);
   }
 
   Future<void> linkPlayerToUser({required int playerId, required String userId}) async {

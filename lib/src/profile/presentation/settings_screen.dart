@@ -6,6 +6,7 @@ import '../../auth/providers/auth_providers.dart';
 import '../../auth/providers/app_settings_providers.dart';
 import '../../auth/data/admin_config.dart';
 import '../../theme/theme_provider.dart';
+import '../../tutorial/interactive_tutorial.dart';
 
 /// Provider for user settings from the profiles table
 final userSettingsProvider = FutureProvider<UserSettings>((ref) async {
@@ -267,9 +268,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
   
   void _startTutorial(BuildContext context) {
-    // Navigate to tutorial - will be implemented
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const TutorialScreen()),
+      MaterialPageRoute(builder: (_) => const InteractiveTutorial()),
     );
   }
   

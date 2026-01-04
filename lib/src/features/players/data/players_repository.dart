@@ -167,8 +167,19 @@ class PlayersRepository {
 
   /// Search through user's linked players by name or email
   /// This is used for group invites - searches players you've added, not all users
-  Future<List<Player>> searchLinkedPlayers(String query) async {
+  /// If excludeGroupId is provided, excludes players who are already members of that group
+  Future<List<Player>> searchLinkedPlayers(String query, {int? excludeGroupId}) async {
     if (query.trim().isEmpty) return [];
+    
+    // Get existing group member user IDs to exclude
+    Set<String> existingMemberIds = {};
+    if (excludeGroupId != null) {
+      final members = await _client
+          .from('group_members')
+          .select('user_id')
+          .eq('group_id', excludeGroupId);
+      existingMemberIds = members.map((m) => m['user_id'] as String).toSet();
+    }
     
     final searchTerm = '%${query.toLowerCase().trim()}%';
     
@@ -179,10 +190,15 @@ class PlayersRepository {
         .eq('user_id', _client.auth.currentUser!.id)
         .not('linked_user_id', 'is', null)
         .or('name.ilike.$searchTerm,email.ilike.$searchTerm')
-        .limit(10);
+        .limit(20);  // Fetch more to account for filtering
+    
+    // Filter out players whose linked_user_id is already a group member
+    final filteredData = excludeGroupId != null
+        ? data.where((p) => !existingMemberIds.contains(p['linked_user_id'] as String?)).toList()
+        : data;
     
     // Batch fetch linked user display names
-    final linkedUserIds = data
+    final linkedUserIds = filteredData
         .map((e) => e['linked_user_id'] as String?)
         .where((id) => id != null)
         .cast<String>()
@@ -201,7 +217,7 @@ class PlayersRepository {
       };
     }
     
-    return data.map((e) {
+    return filteredData.take(10).map((e) {
       final linkedUserId = e['linked_user_id'] as String?;
       return Player.fromMap({
         ...e,

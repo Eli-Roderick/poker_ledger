@@ -419,8 +419,11 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
     setState(() => _isSearching = true);
 
     try {
-      // Search through user's linked players, not all users
-      final results = await ref.read(playersListProvider.notifier).searchLinkedPlayers(query);
+      // Search through user's linked players, excluding those already in the group
+      final results = await ref.read(playersListProvider.notifier).searchLinkedPlayers(
+        query, 
+        excludeGroupId: widget.groupId,
+      );
       if (mounted) {
         setState(() {
           _searchResults = results;
