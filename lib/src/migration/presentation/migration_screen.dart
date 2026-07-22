@@ -49,7 +49,18 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
   }
 
   Future<void> _deleteLocalAndContinue() async {
-    await MigrationService.deleteLocalDatabase();
+    final deleted = await MigrationService.deleteLocalDatabase();
+    if (!deleted) {
+      if (mounted) {
+        setState(() {
+          _error =
+              'Local data was not deleted because migration verification no '
+              'longer matches. Run the migration again before continuing.';
+          _result = null;
+        });
+      }
+      return;
+    }
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const AppShell()),
@@ -59,7 +70,7 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
   }
 
   Future<void> _skipMigration() async {
-    await MigrationService.deleteLocalDatabase();
+    await MigrationService.skipForCurrentUser();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const AppShell()),
@@ -108,17 +119,17 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
         const SizedBox(height: 24),
         Text(
           'Local Data Found',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           'We found existing data on this device. Would you like to migrate it to your new account?',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 32),
@@ -131,13 +142,16 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
                 Text(
                   'Data to migrate:',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _DataRow(label: 'Players', count: _localCounts['players'] ?? 0),
                 _DataRow(label: 'Games', count: _localCounts['sessions'] ?? 0),
-                _DataRow(label: 'Quick Adds', count: _localCounts['quickAdds'] ?? 0),
+                _DataRow(
+                  label: 'Quick Adds',
+                  count: _localCounts['quickAdds'] ?? 0,
+                ),
               ],
             ),
           ),
@@ -151,10 +165,7 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: Colors.red.shade200),
             ),
-            child: Text(
-              _error!,
-              style: TextStyle(color: Colors.red.shade700),
-            ),
+            child: Text(_error!, style: TextStyle(color: Colors.red.shade700)),
           ),
         ],
         const Spacer(),
@@ -186,8 +197,15 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
           onPressed: _isMigrating ? null : _skipMigration,
           child: const Padding(
             padding: EdgeInsets.all(12),
-            child: Text('Skip & Delete Local Data'),
+            child: Text('Keep Local Data & Continue'),
           ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Your local database will stay on this device so you can migrate it '
+          'later. Poker Ledger never deletes it without a verified import.',
+          style: Theme.of(context).textTheme.bodySmall,
+          textAlign: TextAlign.center,
         ),
       ],
     );
@@ -198,17 +216,13 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Spacer(),
-        Icon(
-          Icons.check_circle,
-          size: 100,
-          color: Colors.green.shade400,
-        ),
+        Icon(Icons.check_circle, size: 100, color: Colors.green.shade400),
         const SizedBox(height: 24),
         Text(
           'Migration Complete!',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 16),
@@ -221,17 +235,41 @@ class _MigrationScreenState extends ConsumerState<MigrationScreen> {
                 Text(
                   'Successfully imported:',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _DataRow(label: 'Players', count: _result!.playersImported),
                 _DataRow(label: 'Games', count: _result!.sessionsImported),
-                _DataRow(label: 'Game Players', count: _result!.sessionPlayersImported),
+                _DataRow(
+                  label: 'Game Players',
+                  count: _result!.sessionPlayersImported,
+                ),
                 _DataRow(label: 'Rebuys', count: _result!.rebuysImported),
-                _DataRow(label: 'Quick Adds', count: _result!.quickAddsImported),
+                _DataRow(
+                  label: 'Quick Adds',
+                  count: _result!.quickAddsImported,
+                ),
                 const Divider(),
-                _DataRow(label: 'Total Records', count: _result!.totalImported, bold: true),
+                _DataRow(
+                  label: 'Total Records',
+                  count: _result!.totalImported,
+                  bold: true,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.verified_outlined,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text('Counts and financial checksum verified'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -254,11 +292,7 @@ class _DataRow extends StatelessWidget {
   final int count;
   final bool bold;
 
-  const _DataRow({
-    required this.label,
-    required this.count,
-    this.bold = false,
-  });
+  const _DataRow({required this.label, required this.count, this.bold = false});
 
   @override
   Widget build(BuildContext context) {
@@ -270,13 +304,17 @@ class _DataRow extends StatelessWidget {
           Text(
             label,
             style: bold
-                ? Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)
+                ? Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)
                 : null,
           ),
           Text(
             count.toString(),
             style: bold
-                ? Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)
+                ? Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold)
                 : Theme.of(context).textTheme.bodyLarge,
           ),
         ],

@@ -4,11 +4,16 @@ import 'package:intl/intl.dart';
 
 import '../data/player_detail_repository.dart';
 import '../../analytics/data/analytics_providers.dart';
+import '../../../utils/money.dart';
 
 class PlayerDetailScreen extends ConsumerStatefulWidget {
   final int playerId;
   final String playerName;
-  const PlayerDetailScreen({super.key, required this.playerId, required this.playerName});
+  const PlayerDetailScreen({
+    super.key,
+    required this.playerId,
+    required this.playerName,
+  });
 
   @override
   ConsumerState<PlayerDetailScreen> createState() => _PlayerDetailScreenState();
@@ -18,7 +23,6 @@ class _PlayerSummary extends StatelessWidget {
   final int sessionsCount;
   final int sessionNetCents;
   final int quickAddNetCents;
-  final int totalNetCents;
   final int totalBuyInCents;
   final int maxSingleWinCents;
   final int maxSingleLossCents; // negative or 0
@@ -28,7 +32,6 @@ class _PlayerSummary extends StatelessWidget {
     required this.sessionsCount,
     required this.sessionNetCents,
     required this.quickAddNetCents,
-    required this.totalNetCents,
     required this.totalBuyInCents,
     required this.maxSingleWinCents,
     required this.maxSingleLossCents,
@@ -48,9 +51,19 @@ class _PlayerSummary extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Theme.of(context).colorScheme.outline)),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(value, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: valueColor)),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(color: valueColor),
+          ),
         ],
       );
     }
@@ -68,13 +81,33 @@ class _PlayerSummary extends StatelessWidget {
             children: [
               stat('Games', sessionsCount.toString()),
               stat('Total buy-ins', currency.format(totalBuyInCents / 100)),
-              stat('Game net', currency.format(sessionNetCents / 100), valueColor: netColor(sessionNetCents)),
-              stat('Quick adds', currency.format(quickAddNetCents / 100), valueColor: netColor(quickAddNetCents)),
-              stat('Total net', currency.format(totalNetCents / 100), valueColor: netColor(totalNetCents)),
+              stat(
+                'Game net',
+                currency.format(sessionNetCents / 100),
+                valueColor: netColor(sessionNetCents),
+              ),
+              stat(
+                'Quick adds',
+                currency.format(quickAddNetCents / 100),
+                valueColor: netColor(quickAddNetCents),
+              ),
               stat('Max single win', currency.format(maxSingleWinCents / 100)),
-              stat('Max single loss', currency.format(maxSingleLossCents / 100)),
-              stat('Last active', lastActive == null ? '—' : DateFormat.yMMMd().add_jm().format(lastActive!)),
+              stat(
+                'Max single loss',
+                currency.format(maxSingleLossCents / 100),
+              ),
+              stat(
+                'Last active',
+                lastActive == null
+                    ? '—'
+                    : DateFormat.yMMMd().add_jm().format(lastActive!),
+              ),
             ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Quick adds are private notes. They never change game results, '
+            'group standings, or profile stats.',
           ),
         ],
       ),
@@ -100,7 +133,7 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     } catch (_) {
       // May fail for shared players - that's ok
     }
-    
+
     // Quick adds are only visible for own players
     List<Map<String, Object?>> quickAdds = [];
     try {
@@ -108,7 +141,7 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     } catch (_) {
       // Expected for shared players - quick adds are private
     }
-    
+
     // Total buy-ins from sessions
     int totalBuyIns = 0;
     try {
@@ -116,8 +149,12 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     } catch (_) {
       // May fail for shared players
     }
-    
-    return _PlayerHistoryData(sessions: sessions, quickAdds: quickAdds, totalBuyInCents: totalBuyIns);
+
+    return _PlayerHistoryData(
+      sessions: sessions,
+      quickAdds: quickAdds,
+      totalBuyInCents: totalBuyIns,
+    );
   }
 
   Future<void> _refresh() async {
@@ -133,45 +170,66 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     final result = await showDialog<bool>(
       context: context,
       builder: (_) {
-        return StatefulBuilder(builder: (context, setState) {
-          return AlertDialog(
-            title: const Text('Quick add'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: SegmentedButton<bool>(
-                        segments: const [
-                          ButtonSegment<bool>(value: true, label: Text('Win'), icon: Icon(Icons.add_circle_outline)),
-                          ButtonSegment<bool>(value: false, label: Text('Loss'), icon: Icon(Icons.remove_circle_outline)),
-                        ],
-                        selected: {isWin},
-                        onSelectionChanged: (s) => setState(() => isWin = s.first),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Quick add'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SegmentedButton<bool>(
+                          segments: const [
+                            ButtonSegment<bool>(
+                              value: true,
+                              label: Text('Win'),
+                              icon: Icon(Icons.add_circle_outline),
+                            ),
+                            ButtonSegment<bool>(
+                              value: false,
+                              label: Text('Loss'),
+                              icon: Icon(Icons.remove_circle_outline),
+                            ),
+                          ],
+                          selected: {isWin},
+                          onSelectionChanged: (s) =>
+                              setState(() => isWin = s.first),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: amountController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
                     ),
-                  ],
+                    decoration: const InputDecoration(labelText: 'Amount'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(
+                      labelText: 'Note (optional)',
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Amount'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: noteController,
-                  decoration: const InputDecoration(labelText: 'Note (optional)'),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Add'),
                 ),
               ],
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Add')),
-            ],
-          );
-        });
+            );
+          },
+        );
       },
     );
     if (result != true) return;
@@ -179,14 +237,22 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
     // Parse amount (supports dollars.cents)
     final raw = amountController.text.trim();
     if (raw.isEmpty) return;
-    final parsed = num.tryParse(raw.replaceAll(',', ''));
+    final parsed = Money.tryParseCents(raw);
     if (parsed == null) return;
-    final cents = (parsed * 100).round() * (isWin ? 1 : -1);
-    await _repo.addQuickAdd(playerId: widget.playerId, amountCents: cents, note: noteController.text.trim().isEmpty ? null : noteController.text.trim());
+    final cents = parsed * (isWin ? 1 : -1);
+    await _repo.addQuickAdd(
+      playerId: widget.playerId,
+      amountCents: cents,
+      note: noteController.text.trim().isEmpty
+          ? null
+          : noteController.text.trim(),
+    );
     // Refresh analytics so global views reflect this change immediately
     await ref.read(analyticsProvider.notifier).refresh();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quick add saved')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Quick add saved')));
     }
     await _refresh();
     // Done
@@ -213,14 +279,21 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('Error: ${snap.error}'));
+            return const Center(
+              child: Text('Player history could not be loaded.'),
+            );
           }
           final data = snap.data!;
           // Compute summary stats
           final sessionsCount = data.sessions.length;
-          final sessionNet = data.sessions.fold<int>(0, (p, s) => p + ((s['net_cents'] as int?) ?? 0));
-          final quickAddNet = data.quickAdds.fold<int>(0, (p, q) => p + ((q['amount_cents'] as int?) ?? 0));
-          final totalNet = sessionNet + quickAddNet;
+          final sessionNet = data.sessions.fold<int>(
+            0,
+            (p, s) => p + ((s['net_cents'] as int?) ?? 0),
+          );
+          final quickAddNet = data.quickAdds.fold<int>(
+            0,
+            (p, q) => p + ((q['amount_cents'] as int?) ?? 0),
+          );
           int maxWin = 0;
           int maxLoss = 0; // most negative
           for (final s in data.sessions) {
@@ -232,14 +305,18 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
           for (final s in data.sessions) {
             final startedAt = s['started_at'];
             if (startedAt == null) continue;
-            final d = startedAt is String ? DateTime.parse(startedAt) : DateTime.fromMillisecondsSinceEpoch(startedAt as int);
+            final d = startedAt is String
+                ? DateTime.parse(startedAt)
+                : DateTime.fromMillisecondsSinceEpoch(startedAt as int);
             final la = lastActive;
             if (la == null || d.isAfter(la)) lastActive = d;
           }
           for (final q in data.quickAdds) {
             final createdAt = q['created_at'];
             if (createdAt == null) continue;
-            final d = createdAt is String ? DateTime.parse(createdAt) : DateTime.fromMillisecondsSinceEpoch(createdAt as int);
+            final d = createdAt is String
+                ? DateTime.parse(createdAt)
+                : DateTime.fromMillisecondsSinceEpoch(createdAt as int);
             final la = lastActive;
             if (la == null || d.isAfter(la)) lastActive = d;
           }
@@ -248,35 +325,52 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
           final items = <_HistoryItem>[];
           for (final s in data.sessions) {
             final startedAt = s['started_at'];
-            final when = startedAt is String ? DateTime.parse(startedAt) : (startedAt != null ? DateTime.fromMillisecondsSinceEpoch(startedAt as int) : DateTime.now());
-            items.add(_HistoryItem.session(
-              sessionId: s['session_id'] as int,
-              sessionName: (s['session_name'] as String?) ?? 'Game #${s['session_id']}',
-              when: when,
-              netCents: (s['net_cents'] as int?) ?? 0,
-            ));
+            final when = startedAt is String
+                ? DateTime.parse(startedAt)
+                : (startedAt != null
+                      ? DateTime.fromMillisecondsSinceEpoch(startedAt as int)
+                      : DateTime.now());
+            items.add(
+              _HistoryItem.session(
+                sessionId: s['session_id'] as int,
+                sessionName:
+                    (s['session_name'] as String?) ??
+                    'Game #${s['session_id']}',
+                when: when,
+                netCents: (s['net_cents'] as int?) ?? 0,
+              ),
+            );
           }
           for (final q in data.quickAdds) {
             final createdAt = q['created_at'];
-            final when = createdAt is String ? DateTime.parse(createdAt) : (createdAt != null ? DateTime.fromMillisecondsSinceEpoch(createdAt as int) : DateTime.now());
-            items.add(_HistoryItem.quickAdd(
-              quickAddId: q['id'] as int?,
-              when: when,
-              amountCents: q['amount_cents'] as int,
-              note: q['note'] as String?,
-            ));
+            final when = createdAt is String
+                ? DateTime.parse(createdAt)
+                : (createdAt != null
+                      ? DateTime.fromMillisecondsSinceEpoch(createdAt as int)
+                      : DateTime.now());
+            items.add(
+              _HistoryItem.quickAdd(
+                quickAddId: q['id'] as int?,
+                when: when,
+                amountCents: q['amount_cents'] as int,
+                note: q['note'] as String?,
+              ),
+            );
           }
           items.sort((a, b) => b.when.compareTo(a.when));
 
           if (items.isEmpty) {
-            return const Center(child: Text('No history yet. Use Quick add to add an entry.'));
+            return const Center(
+              child: Text('No history yet. Use Quick add to add an entry.'),
+            );
           }
 
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView.separated(
               itemCount: items.length + 2,
-              separatorBuilder: (_, i) => i == 0 ? const SizedBox.shrink() : const Divider(height: 1),
+              separatorBuilder: (_, i) =>
+                  i == 0 ? const SizedBox.shrink() : const Divider(height: 1),
               itemBuilder: (context, index) {
                 if (index == 0) {
                   return Card(
@@ -285,7 +379,6 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                       sessionsCount: sessionsCount,
                       sessionNetCents: sessionNet,
                       quickAddNetCents: quickAddNet,
-                      totalNetCents: totalNet,
                       totalBuyInCents: data.totalBuyInCents,
                       maxSingleWinCents: maxWin,
                       maxSingleLossCents: maxLoss,
@@ -296,7 +389,10 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                 if (index == 1) {
                   return Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Text('History', style: Theme.of(context).textTheme.titleMedium),
+                    child: Text(
+                      'History',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   );
                 }
                 final it = items[index - 2];
@@ -310,7 +406,12 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                     leading: const Icon(Icons.casino),
                     title: Text(it.sessionName ?? 'Game'),
                     subtitle: Text(date),
-                    trailing: Text(amount, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color)),
+                    trailing: Text(
+                      amount,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleMedium?.copyWith(color: color),
+                    ),
                   );
                 } else {
                   final amount = currency.format((it.amountCents ?? 0) / 100);
@@ -319,9 +420,16 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                       : ((it.amountCents ?? 0) > 0 ? Colors.green : Colors.red);
                   return ListTile(
                     leading: const Icon(Icons.flash_on),
-                    title: Text(it.note?.isNotEmpty == true ? it.note! : 'Quick add'),
+                    title: Text(
+                      it.note?.isNotEmpty == true ? it.note! : 'Quick add',
+                    ),
                     subtitle: Text(date),
-                    trailing: Text(amount, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color)),
+                    trailing: Text(
+                      amount,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleMedium?.copyWith(color: color),
+                    ),
                     onLongPress: it.quickAddId == null
                         ? null
                         : () async {
@@ -329,18 +437,34 @@ class _PlayerDetailScreenState extends ConsumerState<PlayerDetailScreen> {
                               context: context,
                               builder: (_) => AlertDialog(
                                 title: const Text('Delete quick add?'),
-                                content: const Text('This action cannot be undone.'),
+                                content: const Text(
+                                  'This action cannot be undone.',
+                                ),
                                 actions: [
-                                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                  FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text('Delete'),
+                                  ),
                                 ],
                               ),
                             );
                             if (ok == true) {
                               await _repo.deleteQuickAdd(it.quickAddId!);
-                              await ref.read(analyticsProvider.notifier).refresh();
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Quick add deleted')));
+                              await ref
+                                  .read(analyticsProvider.notifier)
+                                  .refresh();
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Quick add deleted'),
+                                  ),
+                                );
                               }
                               await _refresh();
                             }
@@ -360,7 +484,11 @@ class _PlayerHistoryData {
   final List<Map<String, Object?>> sessions;
   final List<Map<String, Object?>> quickAdds;
   final int totalBuyInCents;
-  _PlayerHistoryData({required this.sessions, required this.quickAdds, required this.totalBuyInCents});
+  _PlayerHistoryData({
+    required this.sessions,
+    required this.quickAdds,
+    required this.totalBuyInCents,
+  });
 }
 
 enum _HistoryType { session, quickAdd }
@@ -375,17 +503,23 @@ class _HistoryItem {
   final String? note; // for quick add
   final int? quickAddId; // for quick add
 
-  _HistoryItem.session({required this.sessionId, required this.sessionName, required this.when, required int netCents})
-      : type = _HistoryType.session,
-        netCents = netCents,
-        amountCents = null,
-        note = null,
-        quickAddId = null;
+  _HistoryItem.session({
+    required this.sessionId,
+    required this.sessionName,
+    required this.when,
+    required this.netCents,
+  }) : type = _HistoryType.session,
+       amountCents = null,
+       note = null,
+       quickAddId = null;
 
-  _HistoryItem.quickAdd({this.quickAddId, required this.when, required int amountCents, this.note})
-      : type = _HistoryType.quickAdd,
-        amountCents = amountCents,
-        netCents = null,
-        sessionId = null,
-        sessionName = null;
+  _HistoryItem.quickAdd({
+    this.quickAddId,
+    required this.when,
+    required this.amountCents,
+    this.note,
+  }) : type = _HistoryType.quickAdd,
+       netCents = null,
+       sessionId = null,
+       sessionName = null;
 }

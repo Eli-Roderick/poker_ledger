@@ -13,20 +13,15 @@ enum HelpPage {
 
 class HelpScreen extends StatelessWidget {
   final HelpPage page;
-  
-  const HelpScreen({
-    super.key,
-    required this.page,
-  });
+
+  const HelpScreen({super.key, required this.page});
 
   @override
   Widget build(BuildContext context) {
     final content = _getPageContent(page);
-    
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(content.title),
-      ),
+      appBar: AppBar(title: Text(content.title)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -35,18 +30,29 @@ class HelpScreen extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const SizedBox(height: 20),
-          ...content.points.map((point) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('• ', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
-                Expanded(
-                  child: Text(point, style: Theme.of(context).textTheme.bodyMedium),
-                ),
-              ],
+          ...content.points.map(
+            (point) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '• ',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      point,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          )),
+          ),
         ],
       ),
     );
@@ -57,102 +63,112 @@ class HelpScreen extends StatelessWidget {
       case HelpPage.sessions:
         return const _HelpContent(
           title: 'Games',
-          description: 'Your poker games live here. Each game tracks players, buy-ins, and settlements.',
+          description:
+              'Your poker games live here. Each game tracks players, buy-ins, and settlements.',
           points: [
-            'Tap + to start a new game',
-            'Tap any game to manage it',
-            'Use filters to find specific games',
-            'Swipe left to delete (only your own games)',
-            'Green check = finalized, play icon = in progress',
+            'Use Hosted and Joined to find every game you can access',
+            'New games open in a guided Lobby, Mode, Live, and Summary flow',
+            'Enter a join code or accept an invitation before you become a player',
+            'Draft, live, settling, and finalized labels show the server-confirmed phase',
+            'Finalized ledgers are locked; corrections create a new audit revision',
           ],
         );
-      
+
       case HelpPage.sessionDetail:
         return const _HelpContent(
           title: 'Game Details',
-          description: 'Manage your poker game here. Add players, track money, and settle up at the end.',
+          description:
+              'Manage your poker game here. Add players, track money, and settle up at the end.',
           points: [
-            'Add players and set their buy-ins',
-            'Use the + button for rebuys during the game',
-            'Enter cash-outs when the game ends',
-            'Pick Pairwise (everyone settles directly) or Banker (one person handles it all)',
-            'Hit Finalize when done to lock everything',
-            'Share or export the summary',
+            'Invite accounts by handle, or share a short-lived join code',
+            'Every player explicitly accepts before joining or affecting stats',
+            'Choose Pairwise or Banker at the required mode checkpoint',
+            'Record rebuys and cash-outs on the Live Game page',
+            'The summary identifies every missing cash-out or balance mismatch',
+            'Finalization creates an immutable revision and settlement transfers',
           ],
         );
-      
+
       case HelpPage.players:
         return const _HelpContent(
           title: 'Players',
-          description: 'Your players. Link them to accounts so their stats sync across games.',
+          description:
+              'The player list is retained only for legacy games and private notes.',
           points: [
-            'Tap + to add a new player',
-            'Search by name or email to link to an existing account',
-            'Linked players show a link icon and can be tapped to view their profile',
-            'Guest players (not linked) can be edited by tapping them',
-            'Use the eye icon to show/hide inactive players',
+            'New games never require a host-owned player record',
+            'Invite registered accounts directly from a game by handle or display name',
+            'Email addresses and registration status are never searchable',
+            'Historical guest names remain snapshots in their original games',
+            'Private quick-add notes never change group or canonical game standings',
           ],
         );
-      
+
       case HelpPage.groups:
         return const _HelpContent(
           title: 'Groups',
-          description: 'Share games with your poker crew. Everyone sees the same stats.',
+          description:
+              'Share games with your poker crew. Everyone sees the same stats.',
           points: [
             'Tap + to create a group',
-            'Invite players by searching their name or email',
-            'Share games from the game detail screen',
-            'Group analytics show combined stats from all shared games',
-            'Only owners can invite or remove members',
+            'Invite accounts by handle; membership starts only after acceptance',
+            'A new game is private or attached to exactly one group',
+            'Every current accepted member can see each group game’s full ledger',
+            'Leaving immediately removes group-only access but preserves games you played',
+            'Groups with game history are archived instead of deleted',
           ],
         );
-      
+
       case HelpPage.groupDetail:
         return const _HelpContent(
           title: 'Group Details',
           description: 'Manage your group members here.',
           points: [
             'See all members and who owns the group',
-            'Owners can invite new members by email',
-            'Owners can remove members from the group',
-            'Non-owners can leave the group',
+            'Owners and authorized administrators can invite by handle',
+            'Invitees must accept before becoming members',
+            'Removing a member does not erase their historical results',
+            'Members can always leave, including after a group is archived',
           ],
         );
-      
+
       case HelpPage.analytics:
         return const _HelpContent(
           title: 'Analytics',
-          description: 'See how you and your players are doing. Filter by date or group.',
+          description:
+              'See canonical results from finalized games you played or group games you can access.',
           points: [
-            'Top cards show total games, players, and net profit/loss',
-            'Tap the title to switch between your games and group games',
+            'Personal stats include every finalized game you accepted, regardless of host',
+            'Group standings use every finalized game attached to that group',
             'Use the filter icon to narrow down by date range',
-            'Tap any player to see their detailed stats and history',
-            'Export to CSV if you want the raw data',
+            'Historical names use the snapshot saved for that game',
+            'CSV exports use the same canonical totals shown on screen',
           ],
         );
-      
+
       case HelpPage.playerProfile:
         return const _HelpContent(
           title: 'Player Profile',
-          description: 'View stats for a linked player. Follow them to see their private stats.',
+          description:
+              'View stats that are visible through shared participation and current groups.',
           points: [
             'Summary shows games, buy-ins, cash-outs, and net profit',
-            'Follow users to see stats from their private games',
-            'Filter by mutual groups to see shared game stats',
+            'Private-game finances are visible only to accepted participants',
+            'Filter by a shared group to see that group’s standings',
             'View their recent game history',
             'Tap any game to see the full breakdown',
           ],
         );
-      
+
       case HelpPage.profile:
         return const _HelpContent(
           title: 'Your Profile',
-          description: 'Manage your account and see games you\'re linked to.',
+          description:
+              'Manage your identity and see stats from games you accepted.',
           points: [
-            'View your account info and display name',
-            'Accept or reject follow requests from other users',
-            'See games where you\'re a linked player',
+            'View your display name and unique invitation handle',
+            'Control whether your handle is discoverable for invitations',
+            'Personal stats include hosted and joined finalized games',
+            'Open joined game history from Games → Joined',
             'Sign out from your account',
           ],
         );
@@ -174,10 +190,8 @@ class _HelpContent {
 
 extension HelpNavigation on BuildContext {
   void showHelp(HelpPage page) {
-    Navigator.of(this).push(
-      MaterialPageRoute(
-        builder: (_) => HelpScreen(page: page),
-      ),
-    );
+    Navigator.of(
+      this,
+    ).push(MaterialPageRoute(builder: (_) => HelpScreen(page: page)));
   }
 }

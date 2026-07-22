@@ -1,22 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/providers/auth_providers.dart';
-import '../../features/session/data/session_providers.dart';
-import '../../features/session/domain/session_models.dart';
-import '../../features/session/presentation/session_summary_screen.dart';
 import '../../features/profile/data/profile_providers.dart';
 import '../../features/help/presentation/help_screen.dart';
+import '../../utils/money.dart';
 import 'settings_screen.dart';
 
-final myLinkedSessionsProvider = FutureProvider<List<SessionWithOwner>>((ref) async {
-  // Watch auth state to auto-refresh when user changes
+final currentProfileDetailsProvider = FutureProvider<Map<String, dynamic>?>((
+  ref,
+) async {
   final user = ref.watch(currentUserProvider);
-  if (user == null) return [];
-  
-  final repo = ref.read(sessionRepositoryProvider);
-  return repo.listSessionsAsLinkedPlayer();
+  if (user == null) return null;
+  return ref.read(profileRepositoryProvider).getUserProfile(user.id);
 });
 
 class ProfileScreen extends ConsumerWidget {
@@ -25,8 +21,14 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = Supabase.instance.client.auth.currentUser;
-    final linkedSessionsAsync = ref.watch(myLinkedSessionsProvider);
-    
+    final profileAsync = ref.watch(currentProfileDetailsProvider);
+    final statsAsync = user == null
+        ? null
+        : ref.watch(
+            userProfileStatsProvider(UserProfileParams(userId: user.id)),
+          );
+    final profile = profileAsync.valueOrNull;
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -38,9 +40,9 @@ class ProfileScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
             tooltip: 'Settings',
           ),
         ],
@@ -69,14 +71,22 @@ class ProfileScreen extends ConsumerWidget {
                   Text(
                     'Account Information',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _InfoRow(
                     icon: Icons.person_outline,
                     label: 'Display Name',
-                    value: user?.userMetadata?['display_name'] ?? 'Not set',
+                    value: profile?['display_name'] as String? ?? 'Not set',
+                  ),
+                  const Divider(),
+                  _InfoRow(
+                    icon: Icons.alternate_email,
+                    label: 'Handle',
+                    value: profile?['handle'] == null
+                        ? 'Not set'
+                        : '@${profile!['handle']}',
                   ),
                   const Divider(),
                   _InfoRow(
@@ -96,67 +106,57 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ),
-          // Pending follow requests section
-          _buildPendingFollowRequests(context, ref),
-          const SizedBox(height: 24),
           Text(
-            'Games I\'m In',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+            'Personal stats',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Games where someone else added you as a player',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-          ),
-          const SizedBox(height: 12),
-          linkedSessionsAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) => Text('Error: $e'),
-            data: (sessions) {
-              if (sessions.isEmpty) {
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          Icon(Icons.casino_outlined, size: 48, color: Colors.grey.shade400),
-                          const SizedBox(height: 12),
-                          Text(
-                            'No games yet',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'When someone links you to a player in their game, it will appear here',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+          if (statsAsync != null)
+            statsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, __) => const Card(
+                child: ListTile(
+                  leading: Icon(Icons.sync_problem),
+                  title: Text('Stats could not be loaded'),
+                ),
+              ),
+              data: (stats) => Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _StatValue(
+                          label: 'Games',
+                          value: '${stats.totalSessions}',
+                        ),
                       ),
-                    ),
+                      Expanded(
+                        child: _StatValue(
+                          label: 'Net',
+                          value: Money.formatCents(
+                            stats.netProfitCents,
+                            symbol: '\$',
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: _StatValue(
+                          label: 'Win rate',
+                          value: '${stats.winRate.toStringAsFixed(0)}%',
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              }
-              return Column(
-                children: sessions.map((sw) {
-                  final s = sw.session;
-                  final started = DateFormat.yMMMd().add_jm().format(s.startedAt);
-                  return Card(
-                    child: ListTile(
-                      title: Text(s.name ?? 'Game #${s.id}'),
-                      subtitle: Text('$started • By ${sw.ownerName}'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => SessionSummaryScreen(sessionId: s.id!)),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              );
-            },
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          const Text(
+            'Every finalized game you accepted counts here. Hosted and joined '
+            'game history is available under Games.',
           ),
           const SizedBox(height: 32),
           OutlinedButton.icon(
@@ -178,7 +178,7 @@ class ProfileScreen extends ConsumerWidget {
                   ],
                 ),
               );
-              
+
               if (confirmed == true) {
                 await ref.read(authRepositoryProvider).signOut();
                 // Invalidate providers to ensure clean state
@@ -199,84 +199,21 @@ class ProfileScreen extends ConsumerWidget {
   }
 
   String _formatDate(DateTime date) {
-    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
-  }
-
-  Widget _buildPendingFollowRequests(BuildContext context, WidgetRef ref) {
-    final pendingRequestsAsync = ref.watch(pendingFollowRequestsProvider);
-    
-    return pendingRequestsAsync.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (requests) {
-        if (requests.isEmpty) return const SizedBox.shrink();
-        
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Text(
-                  'Follow Requests',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${requests.length}',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ...requests.map((request) => Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  child: Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
-                ),
-                title: Text(request.followerName ?? 'Unknown'),
-                subtitle: Text('Wants to follow you'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.check_circle, color: Colors.green),
-                      onPressed: () async {
-                        final repo = ref.read(profileRepositoryProvider);
-                        await repo.acceptFollowRequest(request.id);
-                        ref.invalidate(pendingFollowRequestsProvider);
-                      },
-                      tooltip: 'Accept',
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.cancel, color: Colors.red),
-                      onPressed: () async {
-                        final repo = ref.read(profileRepositoryProvider);
-                        await repo.rejectFollowRequest(request.id);
-                        ref.invalidate(pendingFollowRequestsProvider);
-                      },
-                      tooltip: 'Reject',
-                    ),
-                  ],
-                ),
-              ),
-            )),
-          ],
-        );
-      },
-    );
   }
 }
 
@@ -304,18 +241,33 @@ class _InfoRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.grey),
               ),
-              Text(
-                value,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
+              Text(value, style: Theme.of(context).textTheme.bodyLarge),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _StatValue extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _StatValue({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
     );
   }
 }

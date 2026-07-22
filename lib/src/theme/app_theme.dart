@@ -11,9 +11,7 @@ class AppTheme {
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.dark,
-    ).copyWith(
-      secondary: accent,
-    );
+    ).copyWith(secondary: accent);
 
     return ThemeData(
       useMaterial3: true,
@@ -21,9 +19,7 @@ class AppTheme {
       scaffoldBackgroundColor: const Color(0xFF111315),
       canvasColor: const Color(0xFF111315),
       cardColor: const Color(0xFF1A1C1E),
-      dialogTheme: const DialogThemeData(
-        backgroundColor: Color(0xFF1A1C1E),
-      ),
+      dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF1A1C1E)),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Color(0xFF1A1C1E),
         modalBackgroundColor: Color(0xFF1A1C1E),
@@ -39,7 +35,9 @@ class AppTheme {
         backgroundColor: Color(0xCC000000),
         contentTextStyle: TextStyle(color: Colors.white),
         elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+        ),
         insetPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         showCloseIcon: true,
       ),
@@ -47,7 +45,9 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -66,9 +66,7 @@ class AppTheme {
     final scheme = ColorScheme.fromSeed(
       seedColor: seed,
       brightness: Brightness.light,
-    ).copyWith(
-      secondary: accent,
-    );
+    ).copyWith(secondary: accent);
 
     return ThemeData(
       useMaterial3: true,
@@ -76,9 +74,7 @@ class AppTheme {
       scaffoldBackgroundColor: const Color(0xFFF5F5F5),
       canvasColor: const Color(0xFFF5F5F5),
       cardColor: Colors.white,
-      dialogTheme: const DialogThemeData(
-        backgroundColor: Colors.white,
-      ),
+      dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: Colors.white,
         modalBackgroundColor: Colors.white,
@@ -94,7 +90,9 @@ class AppTheme {
         backgroundColor: scheme.inverseSurface,
         contentTextStyle: TextStyle(color: scheme.onInverseSurface),
         elevation: 0,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+        ),
         insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         showCloseIcon: true,
       ),
@@ -102,7 +100,9 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(

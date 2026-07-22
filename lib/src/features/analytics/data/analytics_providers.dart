@@ -2,10 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../auth/providers/auth_providers.dart';
 import '../../session/data/session_repository.dart';
 import '../../session/domain/session_models.dart';
-import '../../groups/data/group_providers.dart';
 
 /// Filters for the analytics/stats screen.
-/// 
+///
 /// Supports filtering by:
 /// - Date range (start/end dates)
 /// - In-progress sessions (include or exclude)
@@ -16,7 +15,13 @@ class AnalyticsFilters {
   final bool includeInProgress;
   final int? groupId;
   final String? groupName;
-  const AnalyticsFilters({this.start, this.end, this.includeInProgress = false, this.groupId, this.groupName});
+  const AnalyticsFilters({
+    this.start,
+    this.end,
+    this.includeInProgress = false,
+    this.groupId,
+    this.groupName,
+  });
 
   /// Check if a date falls within the filter range
   bool _inRange(DateTime d) {
@@ -25,26 +30,32 @@ class AnalyticsFilters {
     return afterStart && beforeEnd;
   }
 
-  AnalyticsFilters copyWith({DateTime? start, DateTime? end, bool? includeInProgress, int? groupId, String? groupName}) => AnalyticsFilters(
-        start: start ?? this.start,
-        end: end ?? this.end,
-        includeInProgress: includeInProgress ?? this.includeInProgress,
-        groupId: groupId ?? this.groupId,
-        groupName: groupName ?? this.groupName,
-      );
-  
+  AnalyticsFilters copyWith({
+    DateTime? start,
+    DateTime? end,
+    bool? includeInProgress,
+    int? groupId,
+    String? groupName,
+  }) => AnalyticsFilters(
+    start: start ?? this.start,
+    end: end ?? this.end,
+    includeInProgress: includeInProgress ?? this.includeInProgress,
+    groupId: groupId ?? this.groupId,
+    groupName: groupName ?? this.groupName,
+  );
+
   /// Clear the group filter while preserving other filters
   AnalyticsFilters clearGroup() => AnalyticsFilters(
-        start: start,
-        end: end,
-        includeInProgress: includeInProgress,
-        groupId: null,
-        groupName: null,
-      );
+    start: start,
+    end: end,
+    includeInProgress: includeInProgress,
+    groupId: null,
+    groupName: null,
+  );
 }
 
 /// Aggregated statistics for a single player across filtered sessions.
-/// 
+///
 /// Used in the leaderboard and player rankings on the Stats screen.
 /// Players are identified by playerId, but may be linked to a user account
 /// via linkedUserId for navigation to their profile.
@@ -76,8 +87,8 @@ class SessionKPI {
   final int cashOutsCents;
   final String? ownerName; // For shared sessions - shows who owns it
   final bool isOwner;
-  final String? sharedByName; // For group sessions - shows who shared it to the group
-  final bool canRemoveFromGroup; // Whether current user can remove this session from the group
+  final String?
+  sharedByName; // For group sessions - shows who shared it to the group
   int get netCents => cashOutsCents - buyInsCents;
   const SessionKPI({
     required this.session,
@@ -87,7 +98,6 @@ class SessionKPI {
     this.ownerName,
     this.isOwner = true,
     this.sharedByName,
-    this.canRemoveFromGroup = false,
   });
 }
 
@@ -98,10 +108,16 @@ class AnalyticsState {
   int get totalSessions => sessions.length;
   int get totalPlayersSeen => players.length;
   int get globalNetCents => sessions.fold(0, (p, e) => p + e.netCents);
-  const AnalyticsState({required this.filters, required this.players, required this.sessions});
+  const AnalyticsState({
+    required this.filters,
+    required this.players,
+    required this.sessions,
+  });
 }
 
-final analyticsRepoProvider = Provider<SessionRepository>((ref) => SessionRepository());
+final analyticsRepoProvider = Provider<SessionRepository>(
+  (ref) => SessionRepository(),
+);
 
 class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
   AnalyticsFilters _filters = const AnalyticsFilters(
@@ -137,25 +153,15 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
 
   Future<AnalyticsState> _load() async {
     final repo = ref.read(analyticsRepoProvider);
-    
+
     // Get sessions based on group filter
     List<SessionWithOwner> sessionsWithOwner;
-    bool isGroupOwner = false;
     if (_filters.groupId != null) {
       sessionsWithOwner = await repo.listSessionsInGroup(_filters.groupId!);
-      // Check if current user is the group owner
-      final groupRepo = ref.read(groupRepositoryProvider);
-      final group = await groupRepo.getGroup(_filters.groupId!);
-      isGroupOwner = group?.isOwner ?? false;
     } else {
-      final mySessions = await repo.listMySessions();
-      sessionsWithOwner = mySessions.map((s) => SessionWithOwner(
-        session: s,
-        ownerName: 'You',
-        isOwner: true,
-      )).toList();
+      sessionsWithOwner = await repo.listPersonalSessions();
     }
-    
+
     final filtered = sessionsWithOwner.where((sw) {
       final inRange = _filters._inRange(sw.session.startedAt);
       final include = _filters.includeInProgress ? true : sw.session.finalized;
@@ -164,8 +170,10 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
 
     // Batch fetch all session players in one query for performance
     final sessionIds = filtered.map((sw) => sw.session.id!).toList();
-    final allSessionPlayers = await repo.listSessionPlayersForMultipleSessions(sessionIds);
-    
+    final allSessionPlayers = await repo.listSessionPlayersForMultipleSessions(
+      sessionIds,
+    );
+
     // Group by session_id for easy lookup
     final playersBySession = <int, List<Map<String, Object?>>>{};
     for (final row in allSessionPlayers) {
@@ -176,7 +184,11 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
     // Build per-session aggregates (include deactivated players to preserve history)
     // For group analytics, merge players linked to the same profile using linked_user_id
     final sessionKpis = <SessionKPI>[];
-    final playerMap = <String, PlayerAggregate>{}; // Key: linked_user_id or "player_$playerId"
+    final playerMap =
+        <
+          String,
+          PlayerAggregate
+        >{}; // Key: linked_user_id or "player_$playerId"
     for (final sw in filtered) {
       final s = sw.session;
       final rows = playersBySession[s.id!] ?? [];
@@ -185,21 +197,16 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
         final pid = r['player_id'] as int;
         final name = (r['player_name'] as String?) ?? 'Unknown';
         final linkedUserId = r['linked_user_id'] as String?;
-        final wasLinkedToDeletedUser = r['was_linked_to_deleted_user'] as bool? ?? false;
         final b = (r['buy_in_cents_total'] as int?) ?? 0;
         final c = (r['cash_out_cents'] as int?) ?? 0;
         final net = c - b;
         buy += b;
         cash += c;
-        
-        // Skip players who were linked to a deleted user - they should not appear in leaderboards
-        // They will still show as guests in session details, but not in aggregate stats
-        if (wasLinkedToDeletedUser) continue;
-        
+
         // Use linked_user_id as key if available, otherwise use player_id
         // This merges stats for players linked to the same profile
         final key = linkedUserId ?? 'player_$pid';
-        
+
         final prev = playerMap[key];
         if (prev == null) {
           playerMap[key] = PlayerAggregate(
@@ -209,7 +216,8 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
             netCents: net,
             maxSingleWinCents: net > 0 ? net : 0,
             maxSingleLossCents: net < 0 ? net : 0,
-            active: true, // placeholder; will be replaced with actual active status later
+            active:
+                true, // placeholder; will be replaced with actual active status later
             linkedUserId: linkedUserId,
           );
         } else {
@@ -218,70 +226,34 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
             playerName: prev.playerName,
             sessions: prev.sessions + 1,
             netCents: prev.netCents + net,
-            maxSingleWinCents: net > prev.maxSingleWinCents ? net : prev.maxSingleWinCents,
-            maxSingleLossCents: net < prev.maxSingleLossCents ? net : prev.maxSingleLossCents,
+            maxSingleWinCents: net > prev.maxSingleWinCents
+                ? net
+                : prev.maxSingleWinCents,
+            maxSingleLossCents: net < prev.maxSingleLossCents
+                ? net
+                : prev.maxSingleLossCents,
             active: prev.active,
             linkedUserId: linkedUserId,
           );
         }
       }
-      sessionKpis.add(SessionKPI(
-        session: s,
-        players: rows.length,
-        buyInsCents: buy,
-        cashOutsCents: cash,
-        ownerName: sw.ownerName,
-        isOwner: sw.isOwner,
-        sharedByName: sw.sharedByName,
-        canRemoveFromGroup: isGroupOwner || sw.canRemoveFromGroup,
-      ));
+      sessionKpis.add(
+        SessionKPI(
+          session: s,
+          players: rows.length,
+          buyInsCents: buy,
+          cashOutsCents: cash,
+          ownerName: sw.ownerName,
+          isOwner: sw.isOwner,
+          sharedByName: sw.sharedByName,
+        ),
+      );
     }
 
-    // Add quick-add totals to player nets (does not change sessions/max win/max loss)
-    // Quick-adds are only for the current user's own players, so use player_id as key
-    final quickAddRows = await repo.listQuickAddSumsByPlayer();
-    // Map player id -> name, active, and wasLinkedToDeletedUser for players not present in sessions
-    final allPlayers = await repo.getAllPlayers();
-    final nameById = {for (final pl in allPlayers) pl.id!: pl.name};
+    // Private quick-add notes are deliberately excluded from canonical game
+    // standings and exports.
+    final allPlayers = await repo.getAllLegacyPlayers();
     final activeById = {for (final pl in allPlayers) pl.id!: (pl.active)};
-    final linkedUserById = {for (final pl in allPlayers) pl.id!: pl.linkedUserId};
-    final wasDeletedById = {for (final pl in allPlayers) pl.id!: pl.wasLinkedToDeletedUser};
-    for (final row in quickAddRows) {
-      final pid = row['player_id'] as int;
-      final adj = (row['total_cents'] as int?) ?? 0;
-      if (adj == 0) continue;
-      // Skip players who were linked to a deleted user
-      if (wasDeletedById[pid] == true) continue;
-      // Use linked_user_id if available, otherwise player_id
-      final linkedUserId = linkedUserById[pid];
-      final key = linkedUserId ?? 'player_$pid';
-      final prev = playerMap[key];
-      if (prev == null) {
-        // Player has only quick-adds in the filtered range; sessions = 0, maxes = 0
-        final name = nameById[pid] ?? 'Unknown';
-        playerMap[key] = PlayerAggregate(
-          playerId: pid,
-          playerName: name,
-          sessions: 0,
-          netCents: adj,
-          maxSingleWinCents: 0,
-          maxSingleLossCents: 0,
-          active: activeById[pid] ?? true,
-          linkedUserId: linkedUserId,
-        );
-      } else {
-        playerMap[key] = PlayerAggregate(
-          playerId: prev.playerId,
-          playerName: prev.playerName,
-          sessions: prev.sessions,
-          netCents: prev.netCents + adj,
-          maxSingleWinCents: prev.maxSingleWinCents,
-          maxSingleLossCents: prev.maxSingleLossCents,
-          active: prev.active,
-          linkedUserId: prev.linkedUserId,
-        );
-      }
-    }
 
     // Attach accurate active flags to all aggregates
     final players = playerMap.values.map((agg) {
@@ -296,11 +268,17 @@ class AnalyticsNotifier extends AsyncNotifier<AnalyticsState> {
         active: isActive,
         linkedUserId: agg.linkedUserId,
       );
-    }).toList()
-      ..sort((a, b) => b.netCents.compareTo(a.netCents));
+    }).toList()..sort((a, b) => b.netCents.compareTo(a.netCents));
 
-    return AnalyticsState(filters: _filters, players: players, sessions: sessionKpis);
+    return AnalyticsState(
+      filters: _filters,
+      players: players,
+      sessions: sessionKpis,
+    );
   }
 }
 
-final analyticsProvider = AsyncNotifierProvider<AnalyticsNotifier, AnalyticsState>(() => AnalyticsNotifier());
+final analyticsProvider =
+    AsyncNotifierProvider<AnalyticsNotifier, AnalyticsState>(
+      () => AnalyticsNotifier(),
+    );

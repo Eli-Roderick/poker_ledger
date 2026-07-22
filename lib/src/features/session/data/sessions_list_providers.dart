@@ -5,40 +5,6 @@ import '../domain/session_models.dart';
 import 'session_repository.dart';
 import 'session_providers.dart' show sessionRepositoryProvider;
 
-/// Filter for which sessions to show
-enum SessionSourceFilter {
-  mySessions,  // Only sessions created by current user
-  all,         // All visible sessions (own + shared via groups)
-  group,       // Sessions in a specific group
-}
-
-class SessionsFilterState {
-  final SessionSourceFilter source;
-  final int? groupId;
-  final String? groupName;
-
-  const SessionsFilterState({
-    this.source = SessionSourceFilter.mySessions,
-    this.groupId,
-    this.groupName,
-  });
-
-  SessionsFilterState copyWith({
-    SessionSourceFilter? source,
-    int? groupId,
-    String? groupName,
-  }) =>
-      SessionsFilterState(
-        source: source ?? this.source,
-        groupId: groupId ?? this.groupId,
-        groupName: groupName ?? this.groupName,
-      );
-}
-
-final sessionsSourceFilterProvider = StateProvider<SessionsFilterState>(
-  (ref) => const SessionsFilterState(),
-);
-
 class SessionsListNotifier extends AsyncNotifier<List<SessionWithOwner>> {
   SessionRepository get _repo => ref.read(sessionRepositoryProvider);
 
@@ -47,35 +13,28 @@ class SessionsListNotifier extends AsyncNotifier<List<SessionWithOwner>> {
     // Watch auth state to auto-refresh when user changes
     final user = ref.watch(currentUserProvider);
     if (user == null) return [];
-    
-    // Sessions list only shows user's own sessions
-    // Shared sessions only appear in Analytics when filtering by group
-    final sessions = await _repo.listMySessions();
-    return sessions.map((s) => SessionWithOwner(
-      session: s,
-      ownerName: 'You',
-      isOwner: true,
-    )).toList();
+
+    return _repo.listMyGames();
   }
 
   Future<void> refresh() async {
     state = const AsyncLoading();
-    final sessions = await _repo.listMySessions();
-    state = AsyncData(sessions.map((s) => SessionWithOwner(
-      session: s,
-      ownerName: 'You',
-      isOwner: true,
-    )).toList());
+    state = await AsyncValue.guard(_repo.listMyGames);
   }
 
   Future<void> removeSessionOptimistically(int sessionId) async {
     final currentState = state;
     if (currentState is AsyncData && currentState.value != null) {
-      state = AsyncData(currentState.value!.where((session) => session.session.id != sessionId).toList());
+      state = AsyncData(
+        currentState.value!
+            .where((session) => session.session.id != sessionId)
+            .toList(),
+      );
     }
   }
 }
 
-final sessionsListProvider = AsyncNotifierProvider<SessionsListNotifier, List<SessionWithOwner>>(
-  () => SessionsListNotifier(),
-);
+final sessionsListProvider =
+    AsyncNotifierProvider<SessionsListNotifier, List<SessionWithOwner>>(
+      () => SessionsListNotifier(),
+    );

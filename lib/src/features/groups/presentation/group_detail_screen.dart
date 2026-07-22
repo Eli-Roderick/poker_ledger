@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide Session;
 import 'package:poker_ledger/src/features/groups/data/group_providers.dart';
 import 'package:poker_ledger/src/features/groups/domain/group_models.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
-import '../../players/data/players_providers.dart';
-import '../../players/domain/player.dart';
+import '../../session/data/v2_game_providers.dart';
+import '../../session/domain/v2_game_models.dart';
+import '../../session/domain/session_models.dart';
+import '../../session/presentation/session_summary_screen.dart';
+import '../../session/presentation/v2_game_flow_screen.dart';
+import '../../../utils/money.dart';
 
 class GroupDetailScreen extends ConsumerStatefulWidget {
   final Group group;
@@ -29,88 +33,136 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final membersAsync = ref.watch(groupMembersProvider(_group.id));
+    final sessionsAsync = ref.watch(groupSessionsProvider(_group.id));
+    final standingsAsync = ref.watch(groupStandingsProvider(_group.id));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_group.name),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () => context.showHelp(HelpPage.groupDetail),
-            tooltip: 'Help',
-          ),
-          if (_group.isOwner)
-            PopupMenuButton<String>(
-              onSelected: (value) => _handleMenuAction(value),
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'rename',
-                  child: ListTile(
-                    leading: Icon(Icons.edit),
-                    title: Text('Rename Group'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    leading: Icon(Icons.delete, color: Colors.red),
-                    title: Text('Delete Group', style: TextStyle(color: Colors.red)),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ],
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_group.name),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: () => context.showHelp(HelpPage.groupDetail),
+              tooltip: 'Help',
             ),
-        ],
-      ),
-      body: membersAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('Error: $e')),
-        data: (members) => _buildMembersList(members),
-      ),
-      floatingActionButton: _group.isOwner
-          ? FloatingActionButton.extended(
-              onPressed: () => _showInviteDialog(),
-              icon: const Icon(Icons.person_add),
-              label: const Text('Invite'),
-            )
-          : null,
-      bottomNavigationBar: !_group.isOwner
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: OutlinedButton(
-                  onPressed: () => _leaveGroup(),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
+            if (_group.isOwner)
+              PopupMenuButton<String>(
+                onSelected: (value) => _handleMenuAction(value),
+                itemBuilder: (context) => [
+                  if (_group.archivedAt == null)
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: ListTile(
+                        leading: Icon(Icons.edit),
+                        title: Text('Rename Group'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  const PopupMenuItem(
+                    value: 'transfer',
+                    child: ListTile(
+                      leading: Icon(Icons.manage_accounts_outlined),
+                      title: Text('Transfer Ownership'),
+                      contentPadding: EdgeInsets.zero,
+                    ),
                   ),
-                  child: const Text('Leave Group'),
-                ),
+                  if (_group.archivedAt == null)
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: ListTile(
+                        leading: Icon(Icons.archive_outlined),
+                        title: Text('Archive Group'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                ],
               ),
-            )
-          : null,
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Members'),
+              Tab(text: 'Games'),
+              Tab(text: 'Standings'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            membersAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, __) => const Center(
+                child: Text('Group members could not be loaded.'),
+              ),
+              data: _buildMembersList,
+            ),
+            sessionsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, __) =>
+                  const Center(child: Text('Group games could not be loaded.')),
+              data: _buildGames,
+            ),
+            standingsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, __) => const Center(
+                child: Text('Group standings could not be loaded.'),
+              ),
+              data: _buildStandings,
+            ),
+          ],
+        ),
+        floatingActionButton: _group.canManageGames && _group.archivedAt == null
+            ? FloatingActionButton.extended(
+                heroTag: 'group-detail-invite-fab',
+                onPressed: () => _showInviteDialog(),
+                icon: const Icon(Icons.person_add),
+                label: const Text('Invite'),
+              )
+            : null,
+        bottomNavigationBar: !_group.isOwner
+            ? SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: OutlinedButton(
+                    onPressed: () => _leaveGroup(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                    ),
+                    child: const Text('Leave Group'),
+                  ),
+                ),
+              )
+            : null,
+      ),
     );
   }
 
   Widget _buildMembersList(List<GroupMember> members) {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    final playersAsync = ref.watch(playersListProvider);
-    
-    // Get set of linked user IDs from current user's player list
-    final linkedUserIds = playersAsync.maybeWhen(
-      data: (players) => players.map((p) => p.linkedUserId).whereType<String>().toSet(),
-      orElse: () => <String>{},
-    );
-    
+    final showArchived = _group.archivedAt != null;
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: members.length,
+      itemCount: members.length + (showArchived ? 1 : 0),
       itemBuilder: (context, index) {
-        final member = members[index];
+        if (showArchived && index == 0) {
+          return const Card(
+            margin: EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: ListTile(
+              leading: Icon(Icons.archive_outlined),
+              title: Text('Archived group'),
+              subtitle: Text(
+                'History and standings remain visible. New games, '
+                'invitations, and membership changes are locked.',
+              ),
+            ),
+          );
+        }
+        final member = members[index - (showArchived ? 1 : 0)];
         final isCurrentUser = member.oderId == currentUserId;
-        final isInPlayerList = linkedUserIds.contains(member.oderId);
-        
+
         return ListTile(
           leading: CircleAvatar(
             backgroundColor: member.isOwner
@@ -126,11 +178,14 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           title: Row(
             children: [
               Expanded(
-                child: Text(member.displayName ?? member.email ?? 'Unknown'),
+                child: Text(member.displayName ?? member.handle ?? 'Unknown'),
               ),
               if (member.isOwner)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(12),
@@ -138,14 +193,25 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                   child: Text(
                     'Owner',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              if (!member.isOwner && member.canManageGames)
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Chip(
+                    visualDensity: VisualDensity.compact,
+                    label: const Text('Game admin'),
                   ),
                 ),
               if (isCurrentUser)
                 Container(
                   margin: const EdgeInsets.only(left: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.secondaryContainer,
                     borderRadius: BorderRadius.circular(12),
@@ -153,82 +219,130 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                   child: Text(
                     'You',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Theme.of(context).colorScheme.secondary,
-                        ),
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
                   ),
                 ),
             ],
           ),
-          subtitle: member.email != null && member.displayName != null
-              ? Text(member.email!)
-              : null,
-          trailing: _buildMemberTrailing(context, member, isCurrentUser, isInPlayerList),
+          subtitle: member.handle != null ? Text('@${member.handle}') : null,
+          trailing: _buildMemberTrailing(member),
         );
       },
     );
   }
-  
-  Widget? _buildMemberTrailing(BuildContext context, GroupMember member, bool isCurrentUser, bool isInPlayerList) {
-    // Owner can remove non-owner members
-    if (_group.isOwner && !member.isOwner) {
+
+  Widget _buildGames(List<Session> sessions) {
+    if (sessions.isEmpty) {
+      return const Center(
+        child: Text('No games are attached to this group yet.'),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: sessions.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final game = sessions[index];
+        return ListTile(
+          leading: Icon(game.finalized ? Icons.lock_outline : Icons.casino),
+          title: Text(
+            game.name?.trim().isNotEmpty == true
+                ? game.name!
+                : 'Game #${game.id}',
+          ),
+          subtitle: Text(
+            '${game.startedAt.toLocal()} · '
+            '${game.finalized ? 'Finalized' : game.phase}',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => game.ledgerVersion == 2
+                  ? V2GameFlowScreen(sessionId: game.id!)
+                  : SessionSummaryScreen(sessionId: game.id!),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStandings(List<GroupStanding> standings) {
+    if (standings.isEmpty) {
+      return const Center(
+        child: Text('Standings appear after a group game is finalized.'),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: standings.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final standing = standings[index];
+        final isProfit = standing.netCents > 0;
+        final isLoss = standing.netCents < 0;
+        return ListTile(
+          leading: CircleAvatar(child: Text('${index + 1}')),
+          title: Text(standing.name),
+          subtitle: Text(
+            '${standing.games} finalized '
+            'game${standing.games == 1 ? '' : 's'}',
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isProfit
+                    ? Icons.trending_up
+                    : isLoss
+                    ? Icons.trending_down
+                    : Icons.remove,
+                color: isProfit
+                    ? Colors.green
+                    : isLoss
+                    ? Theme.of(context).colorScheme.error
+                    : null,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                Money.formatCents(standing.netCents, symbol: '\$'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget? _buildMemberTrailing(GroupMember member) {
+    if (_group.isOwner && _group.archivedAt == null && !member.isOwner) {
+      return PopupMenuButton<String>(
+        tooltip: 'Manage member',
+        onSelected: (action) => _handleMemberAction(action, member),
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: member.canManageGames ? 'revoke_admin' : 'make_admin',
+            child: Text(
+              member.canManageGames
+                  ? 'Remove game administrator'
+                  : 'Make game administrator',
+            ),
+          ),
+          const PopupMenuItem(value: 'remove', child: Text('Remove member')),
+        ],
+      );
+    }
+    if (_group.canManageGames && _group.archivedAt == null && !member.isOwner) {
       return IconButton(
         icon: const Icon(Icons.remove_circle, color: Colors.red),
         onPressed: () => _handleMemberAction('remove', member),
         tooltip: 'Remove member',
       );
     }
-    
-    // Show "Add to players" button for other members not in player list
-    if (!isCurrentUser && !isInPlayerList) {
-      return TextButton.icon(
-        onPressed: () => _addMemberToPlayers(member),
-        icon: const Icon(Icons.person_add, size: 18),
-        label: const Text('Add'),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-        ),
-      );
-    }
-    
-    // Show checkmark if already in player list
-    if (!isCurrentUser && isInPlayerList) {
-      return Icon(
-        Icons.check_circle,
-        color: Theme.of(context).colorScheme.primary,
-        size: 20,
-      );
-    }
-    
+
     return null;
-  }
-  
-  Future<void> _addMemberToPlayers(GroupMember member) async {
-    try {
-      final repo = ref.read(playersRepositoryProvider);
-      final result = await repo.addOrReactivateLinkedUser(
-        userId: member.oderId,
-        displayName: member.displayName ?? 'Unknown',
-        email: member.email,
-      );
-      
-      // Refresh players list
-      ref.invalidate(playersListProvider);
-      
-      if (mounted) {
-        final message = result.isNew 
-            ? '${member.displayName ?? "User"} added to your players'
-            : '${member.displayName ?? "User"} reactivated in your players';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    }
   }
 
   Future<void> _handleMenuAction(String action) async {
@@ -270,12 +384,17 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           _group = _group.copyWith(name: result);
         });
       }
+    } else if (action == 'transfer') {
+      await _transferOwnership();
     } else if (action == 'delete') {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Delete Group'),
-          content: Text('Are you sure you want to delete "${_group.name}"? This cannot be undone.'),
+          title: const Text('Archive Group'),
+          content: Text(
+            'Archive "${_group.name}"? Existing games and standings stay '
+            'read-only, but no new games or members can be added.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -283,8 +402,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Delete'),
+              child: const Text('Archive'),
             ),
           ],
         ),
@@ -299,6 +417,67 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     }
   }
 
+  Future<void> _transferOwnership() async {
+    final members = await ref.read(groupMembersProvider(_group.id).future);
+    final candidates = members.where((member) => !member.isOwner).toList();
+    if (!mounted) return;
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invite and accept another member before transfer.'),
+        ),
+      );
+      return;
+    }
+    final selected = await showDialog<GroupMember>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Choose the new owner'),
+        children: candidates
+            .map(
+              (member) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, member),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(member.displayName ?? member.handle ?? 'Member'),
+                  subtitle: member.handle == null
+                      ? null
+                      : Text('@${member.handle}'),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Transfer ownership?'),
+        content: Text(
+          '${selected.displayName ?? selected.handle ?? 'This member'} will '
+          'become the group owner. You will remain an administrator.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Transfer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref
+        .read(groupRepositoryProvider)
+        .transferOwnership(_group.id, selected.oderId);
+    ref.invalidate(myGroupsProvider);
+    if (mounted) Navigator.pop(context);
+  }
+
   Future<void> _handleMemberAction(String action, GroupMember member) async {
     final repo = ref.read(groupRepositoryProvider);
 
@@ -308,7 +487,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         builder: (context) => AlertDialog(
           title: const Text('Remove Member'),
           content: Text(
-            'Are you sure you want to remove ${member.displayName ?? member.email} from the group?',
+            'Remove ${member.displayName ?? member.handle ?? 'this member'}? '
+            'They immediately lose group-only access but keep games they played.',
           ),
           actions: [
             TextButton(
@@ -328,6 +508,13 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         await repo.removeMember(_group.id, member.oderId);
         ref.invalidate(groupMembersProvider(_group.id));
       }
+    } else if (action == 'make_admin' || action == 'revoke_admin') {
+      await repo.setMemberGameManager(
+        _group.id,
+        member.oderId,
+        enabled: action == 'make_admin',
+      );
+      ref.invalidate(groupMembersProvider(_group.id));
     }
   }
 
@@ -395,8 +582,8 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   bool _isSearching = false;
-  List<Player> _searchResults = [];
-  Player? _selectedPlayer;
+  List<DiscoverableProfile> _searchResults = [];
+  DiscoverableProfile? _selectedPlayer;
   bool _isInviting = false;
   String? _errorText;
 
@@ -419,18 +606,16 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
     setState(() => _isSearching = true);
 
     try {
-      // Search through user's linked players, excluding those already in the group
-      final results = await ref.read(playersListProvider.notifier).searchLinkedPlayers(
-        query, 
-        excludeGroupId: widget.groupId,
-      );
+      final results = await ref
+          .read(v2GameRepositoryProvider)
+          .searchProfiles(query, groupId: widget.groupId);
       if (mounted) {
         setState(() {
           _searchResults = results;
           _isSearching = false;
         });
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() => _isSearching = false);
       }
@@ -445,7 +630,7 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
     });
   }
 
-  void _selectPlayer(Player player) {
+  void _selectPlayer(DiscoverableProfile player) {
     setState(() {
       _selectedPlayer = player;
       _searchCtrl.clear();
@@ -461,14 +646,16 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
   }
 
   Future<void> _invitePlayer() async {
-    if (_selectedPlayer == null || _selectedPlayer!.linkedUserId == null) return;
+    if (_selectedPlayer == null) return;
 
     setState(() => _isInviting = true);
 
     try {
       final repo = ref.read(groupRepositoryProvider);
-      // Use the linked user ID directly
-      final success = await repo.inviteMemberByUserId(widget.groupId, _selectedPlayer!.linkedUserId!);
+      final success = await repo.inviteMemberByUserId(
+        widget.groupId,
+        _selectedPlayer!.id,
+      );
 
       if (success) {
         widget.onInvited();
@@ -483,7 +670,7 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
       }
     } catch (e) {
       setState(() {
-        _errorText = 'Error inviting player: $e';
+        _errorText = 'The invitation could not be sent. Please try again.';
         _isInviting = false;
       });
     }
@@ -515,14 +702,17 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
               ),
               // Title
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     Text(
                       'Invite Member',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const Spacer(),
                     IconButton(
@@ -540,8 +730,8 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                   controller: _searchCtrl,
                   autofocus: true,
                   decoration: InputDecoration(
-                    labelText: 'Search by email or name',
-                    hintText: 'Start typing to search users...',
+                    labelText: 'Search by handle or display name',
+                    hintText: 'Email addresses are never searchable',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _isSearching
                         ? const SizedBox(
@@ -553,14 +743,14 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                             ),
                           )
                         : _searchCtrl.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () {
-                                  _searchCtrl.clear();
-                                  setState(() => _searchResults = []);
-                                },
-                              )
-                            : null,
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _searchResults = []);
+                            },
+                          )
+                        : null,
                     errorText: _errorText,
                   ),
                   onChanged: _onSearchChanged,
@@ -575,7 +765,9 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                     decoration: BoxDecoration(
                       color: Colors.green.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.green.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -589,14 +781,15 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _selectedPlayer!.name,
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              if (_selectedPlayer!.email != null)
-                                Text(
-                                  _selectedPlayer!.email!,
-                                  style: Theme.of(context).textTheme.bodySmall,
+                                _selectedPlayer!.displayName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
                                 ),
+                              ),
+                              Text(
+                                '@${_selectedPlayer!.handle}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ],
                           ),
                         ),
@@ -621,39 +814,57 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                         margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer,
                             child: Icon(
                               Icons.person,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
-                          title: Text(player.name),
-                          subtitle: Text(player.email ?? ''),
-                          trailing: const Icon(Icons.add_circle_outline),
-                          onTap: () => _selectPlayer(player),
+                          title: Text(player.displayName),
+                          subtitle: Text(switch (player.resultState) {
+                            'group_member' =>
+                              '@${player.handle} · Already a member',
+                            'group_invited' =>
+                              '@${player.handle} · Invitation pending',
+                            _ => '@${player.handle}',
+                          }),
+                          trailing: player.canInvite
+                              ? const Icon(Icons.add_circle_outline)
+                              : const Icon(Icons.check_circle_outline),
+                          onTap: player.canInvite
+                              ? () => _selectPlayer(player)
+                              : null,
                         ),
                       );
                     },
                   ),
                 )
-              else if (_searchResults.isEmpty && _searchCtrl.text.isNotEmpty && !_isSearching && _selectedPlayer == null)
+              else if (_searchResults.isEmpty &&
+                  _searchCtrl.text.isNotEmpty &&
+                  !_isSearching &&
+                  _selectedPlayer == null)
                 Expanded(
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.search_off, size: 48, color: Colors.grey.shade400),
+                        Icon(
+                          Icons.search_off,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
                         const SizedBox(height: 8),
                         Text(
-                          'No linked players found',
+                          'No discoverable accounts found',
                           style: TextStyle(color: Colors.grey.shade600),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Search your players who have linked accounts',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.grey.shade500,
-                              ),
+                          'Try a unique handle or display name',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.grey.shade500),
                         ),
                       ],
                     ),
@@ -665,10 +876,14 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.person_search, size: 48, color: Colors.grey.shade400),
+                        Icon(
+                          Icons.person_search,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
                         const SizedBox(height: 8),
                         Text(
-                          'Search your linked players to invite',
+                          'Search Poker Ledger accounts to invite',
                           style: TextStyle(color: Colors.grey.shade600),
                         ),
                       ],
@@ -676,8 +891,7 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                   ),
                 ),
               // Invite button
-              if (_selectedPlayer != null)
-                const Spacer(),
+              if (_selectedPlayer != null) const Spacer(),
               if (_selectedPlayer != null)
                 Padding(
                   padding: const EdgeInsets.all(16),
@@ -689,10 +903,15 @@ class _InviteMemberSheetState extends ConsumerState<_InviteMemberSheet> {
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : const Icon(Icons.person_add),
-                      label: Text(_isInviting ? 'Inviting...' : 'Invite to Group'),
+                      label: Text(
+                        _isInviting ? 'Inviting...' : 'Invite to Group',
+                      ),
                     ),
                   ),
                 ),

@@ -1,31 +1,35 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Repository for authentication operations.
-/// 
+///
 /// Handles sign up, sign in, sign out, password reset, and deleted account restoration.
 class AuthRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
   User? get currentUser => _client.auth.currentUser;
-  
+
   Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
 
-  /// Check if an email has a deleted account pending permanent deletion
-  /// Uses a SECURITY DEFINER function to bypass RLS since user isn't authenticated yet
-  Future<DeletedAccountInfo?> checkDeletedAccount(String email) async {
+  /// Returns restorable account metadata only after verifying the password.
+  Future<DeletedAccountInfo?> checkDeletedAccount(
+    String email,
+    String password,
+  ) async {
     final response = await _client.rpc(
-      'check_deleted_account',
-      params: {'check_email': email},
+      'get_restorable_account',
+      params: {'restore_email': email, 'restore_password': password},
     );
-    
+
     if (response == null || (response as List).isEmpty) return null;
-    
+
     final data = response[0];
     return DeletedAccountInfo(
       userId: data['user_id'] as String,
-      displayName: data['display_name'] as String?,
       deletedAt: DateTime.parse(data['deleted_at'] as String),
-      deletionScheduledAt: DateTime.parse(data['deletion_scheduled_at'] as String),
+      deletionScheduledAt: DateTime.parse(
+        data['deletion_scheduled_at'] as String,
+      ),
     );
   }
 
@@ -34,45 +38,26 @@ class AuthRepository {
   Future<bool> restoreDeletedAccount(String email, String password) async {
     final response = await _client.rpc(
       'restore_deleted_account',
-      params: {
-        'restore_email': email,
-        'restore_password': password,
-      },
+      params: {'restore_email': email, 'restore_password': password},
     );
-    
+
     if (response == null) {
       throw Exception('Failed to restore account');
     }
-    
+
     final result = response as Map<String, dynamic>;
     if (result['success'] != true) {
       throw Exception(result['error'] ?? 'Failed to restore account');
     }
-    
+
     return true;
   }
 
   Future<AuthResponse> signUp({
     required String email,
     required String password,
-    required String displayName,
-    bool isPublic = false,
   }) async {
-    final response = await _client.auth.signUp(
-      email: email,
-      password: password,
-      data: {'display_name': displayName},
-    );
-    
-    // Update the profile with privacy setting after signup
-    if (response.user != null) {
-      await _client
-          .from('profiles')
-          .update({'is_public': isPublic})
-          .eq('id', response.user!.id);
-    }
-    
-    return response;
+    return _client.auth.signUp(email: email, password: password);
   }
 
   Future<AuthResponse> signIn({
@@ -88,8 +73,8 @@ class AuthRepository {
     } catch (e) {
       // If sign in fails, check if it's because the account is deleted/banned
       // Only show restore option if password was correct (account is banned)
-      if (e.toString().contains('banned') || e.toString().contains('Email not confirmed')) {
-        final deletedAccount = await checkDeletedAccount(email);
+      if (e.toString().toLowerCase().contains('banned')) {
+        final deletedAccount = await checkDeletedAccount(email, password);
         if (deletedAccount != null) {
           throw AccountDeletedException(
             'This account has been deleted and is scheduled for permanent removal in ${deletedAccount.daysRemaining} days.',
@@ -109,8 +94,14 @@ class AuthRepository {
   Future<void> resetPassword(String email) async {
     await _client.auth.resetPasswordForEmail(
       email,
-      redirectTo: 'https://eli-roderick.github.io/poker_ledger/',
+      redirectTo: kIsWeb
+          ? Uri.base.resolve('reset-password').toString()
+          : 'io.supabase.pokerledger://reset-password',
     );
+  }
+
+  Future<void> updatePassword(String password) async {
+    await _client.auth.updateUser(UserAttributes(password: password));
   }
 }
 
@@ -120,14 +111,14 @@ class DeletedAccountInfo {
   final String? displayName;
   final DateTime deletedAt;
   final DateTime deletionScheduledAt;
-  
+
   const DeletedAccountInfo({
     required this.userId,
     this.displayName,
     required this.deletedAt,
     required this.deletionScheduledAt,
   });
-  
+
   /// Days remaining before permanent deletion
   int get daysRemaining {
     final now = DateTime.now();
@@ -139,9 +130,9 @@ class DeletedAccountInfo {
 class AccountDeletedException implements Exception {
   final String message;
   final DeletedAccountInfo accountInfo;
-  
+
   const AccountDeletedException(this.message, this.accountInfo);
-  
+
   @override
   String toString() => message;
 }

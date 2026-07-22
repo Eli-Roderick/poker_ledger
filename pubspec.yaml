@@ -47,6 +47,7 @@ dependencies:
   printing: ^5.14.2
   path: ^1.9.1
   web: ^1.1.1
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

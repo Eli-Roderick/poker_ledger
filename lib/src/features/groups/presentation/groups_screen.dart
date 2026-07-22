@@ -20,12 +20,20 @@ class GroupsScreen extends ConsumerWidget {
           onPressed: () => context.showHelp(HelpPage.groups),
           tooltip: 'Help',
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Group invitations',
+            onPressed: () => _showInvitations(context, ref),
+            icon: const Icon(Icons.mail_outline),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(myGroupsProvider),
         child: groupsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, st) => Center(child: Text('Error: $e')),
+          error: (_, __) =>
+              const Center(child: Text('Groups could not be loaded.')),
           data: (groups) {
             if (groups.isEmpty) {
               return ListView(
@@ -47,10 +55,11 @@ class GroupsScreen extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32),
                     child: Text(
-                      'Groups let you share poker sessions with friends. Create a group, invite members, then share sessions to see combined analytics.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.grey,
-                          ),
+                      'Attach a new game to one group so every current member '
+                      'can see its full ledger and standings.',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -71,7 +80,8 @@ class GroupsScreen extends ConsumerWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        tooltip: 'Create a new group to share sessions',
+        heroTag: 'groups-create-group-fab',
+        tooltip: 'Create a group for games and standings',
         onPressed: () => _showCreateGroupDialog(context, ref),
         icon: const Icon(Icons.add),
         label: const Text('Create Group'),
@@ -79,7 +89,10 @@ class GroupsScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _showCreateGroupDialog(BuildContext context, WidgetRef ref) async {
+  Future<void> _showCreateGroupDialog(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final nameController = TextEditingController();
 
     final result = await showDialog<String>(
@@ -102,7 +115,9 @@ class GroupsScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             Text(
               'After creating, you can invite members by searching for their account.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey),
             ),
           ],
         ),
@@ -129,6 +144,106 @@ class GroupsScreen extends ConsumerWidget {
       await repo.createGroup(result);
       ref.invalidate(myGroupsProvider);
     }
+  }
+
+  Future<void> _showInvitations(BuildContext context, WidgetRef ref) async {
+    ref.invalidate(pendingGroupInvitationsProvider);
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => Consumer(
+        builder: (modalContext, ref, _) {
+          final invitations = ref.watch(pendingGroupInvitationsProvider);
+          return SafeArea(
+            child: SizedBox(
+              height: 320,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: invitations.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (_, __) => const Center(
+                    child: Text('Invitations could not be loaded.'),
+                  ),
+                  data: (items) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Group invitations',
+                        style: Theme.of(modalContext).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 12),
+                      if (items.isEmpty)
+                        const Expanded(
+                          child: Center(child: Text('No pending invitations.')),
+                        )
+                      else
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: items.length,
+                            itemBuilder: (_, index) {
+                              final invitation = items[index];
+                              return Card(
+                                child: ListTile(
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.group),
+                                  ),
+                                  title: Text(invitation.groupName),
+                                  subtitle: const Text(
+                                    'By joining, you and every current member '
+                                    'can see complete player-level ledgers and '
+                                    'standings, including games from before '
+                                    'you joined.',
+                                  ),
+                                  trailing: Wrap(
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Decline',
+                                        onPressed: () async {
+                                          await ref
+                                              .read(groupRepositoryProvider)
+                                              .respondToInvitation(
+                                                invitation.id,
+                                                accept: false,
+                                              );
+                                          ref.invalidate(
+                                            pendingGroupInvitationsProvider,
+                                          );
+                                        },
+                                        icon: const Icon(Icons.close),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Accept',
+                                        onPressed: () async {
+                                          await ref
+                                              .read(groupRepositoryProvider)
+                                              .respondToInvitation(
+                                                invitation.id,
+                                                accept: true,
+                                              );
+                                          ref.invalidate(
+                                            pendingGroupInvitationsProvider,
+                                          );
+                                          ref.invalidate(myGroupsProvider);
+                                        },
+                                        icon: const Icon(Icons.check),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -162,20 +277,25 @@ class _GroupTile extends ConsumerWidget {
                 child: Text(
                   'Owner',
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
+              ),
+            if (group.archivedAt != null)
+              const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Chip(label: Text('Archived')),
               ),
           ],
         ),
-        subtitle: Text('${group.memberCount} member${group.memberCount == 1 ? '' : 's'}'),
+        subtitle: Text(
+          '${group.memberCount} member${group.memberCount == 1 ? '' : 's'}',
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => GroupDetailScreen(group: group),
-            ),
+            MaterialPageRoute(builder: (_) => GroupDetailScreen(group: group)),
           ).then((_) => ref.invalidate(myGroupsProvider));
         },
       ),

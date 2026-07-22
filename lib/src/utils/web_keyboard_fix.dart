@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 /// Workaround wrapper for Flutter web keyboard dismiss bug.
 /// See: https://github.com/flutter/flutter/issues/179438
-/// 
+///
 /// On web, wraps the child in a GestureDetector that unfocuses text fields
 /// when tapping outside, encouraging users to dismiss keyboard via tap
 /// rather than the buggy back gesture.
@@ -14,7 +14,7 @@ class WebKeyboardFix extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!kIsWeb) return child;
-    
+
     return GestureDetector(
       onTap: () {
         // Unfocus any focused text field when tapping outside

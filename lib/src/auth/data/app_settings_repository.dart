@@ -3,6 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AppSettingsRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
+  Future<bool> isCurrentUserAdmin() async {
+    if (_client.auth.currentUser == null) return false;
+    final result = await _client.rpc('is_app_admin');
+    return result == true;
+  }
+
   /// Get maintenance mode status from database
   /// Returns true if maintenance mode is enabled
   Future<bool> getMaintenanceMode() async {
@@ -12,7 +18,7 @@ class AppSettingsRepository {
           .select('value')
           .eq('key', 'maintenance_mode')
           .maybeSingle();
-      
+
       if (data == null) return false;
       return data['value'] == 'true';
     } catch (e) {

@@ -13,7 +13,5 @@ final authStateProvider = StreamProvider<AuthState>((ref) {
 
 final currentUserProvider = Provider<User?>((ref) {
   final authState = ref.watch(authStateProvider);
-  return authState.whenOrNull(
-    data: (state) => state.session?.user,
-  );
+  return authState.whenOrNull(data: (state) => state.session?.user);
 });

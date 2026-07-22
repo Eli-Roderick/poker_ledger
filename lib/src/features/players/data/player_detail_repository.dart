@@ -3,7 +3,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class PlayerDetailRepository {
   final SupabaseClient _client = Supabase.instance.client;
 
-  Future<void> addQuickAdd({required int playerId, required int amountCents, String? note}) async {
+  Future<void> addQuickAdd({
+    required int playerId,
+    required int amountCents,
+    String? note,
+  }) async {
     await _client.from('quick_add_entries').insert({
       'user_id': _client.auth.currentUser!.id,
       'player_id': playerId,
@@ -37,10 +41,12 @@ class PlayerDetailRepository {
     // RLS on session_players will filter based on session ownership
     final data = await _client
         .from('session_players')
-        .select('session_id, buy_in_cents_total, cash_out_cents, sessions!inner(id, name, started_at, user_id)')
+        .select(
+          'session_id, buy_in_cents_total, cash_out_cents, sessions!inner(id, name, started_at, user_id)',
+        )
         .eq('player_id', playerId)
         .eq('sessions.user_id', _client.auth.currentUser!.id);
-    
+
     return (data as List).map((row) {
       final session = row['sessions'] as Map<String, dynamic>?;
       final buyIn = row['buy_in_cents_total'] as int? ?? 0;
@@ -51,13 +57,12 @@ class PlayerDetailRepository {
         'started_at': session?['started_at'],
         'net_cents': cashOut - buyIn,
       };
-    }).toList()
-      ..sort((a, b) {
-        final aDate = a['started_at'] as String?;
-        final bDate = b['started_at'] as String?;
-        if (aDate == null || bDate == null) return 0;
-        return bDate.compareTo(aDate);
-      });
+    }).toList()..sort((a, b) {
+      final aDate = a['started_at'] as String?;
+      final bDate = b['started_at'] as String?;
+      if (aDate == null || bDate == null) return 0;
+      return bDate.compareTo(aDate);
+    });
   }
 
   Future<int> totalBuyInCents(int playerId) async {
@@ -67,7 +72,7 @@ class PlayerDetailRepository {
         .select('buy_in_cents_total, sessions!inner(user_id)')
         .eq('player_id', playerId)
         .eq('sessions.user_id', _client.auth.currentUser!.id);
-    
+
     int total = 0;
     for (final row in data) {
       total += (row['buy_in_cents_total'] as int? ?? 0);

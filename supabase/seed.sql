@@ -1,0 +1,1 @@
+-- Intentionally empty. Integration tests create isolated users and fixtures.

@@ -1,13 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/app_settings_repository.dart';
+import 'auth_providers.dart';
 
 final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
   return AppSettingsRepository();
 });
 
-final maintenanceModeProvider = StateNotifierProvider<MaintenanceModeNotifier, AsyncValue<bool>>((ref) {
-  return MaintenanceModeNotifier(ref.read(appSettingsRepositoryProvider));
+final currentUserIsAdminProvider = FutureProvider<bool>((ref) {
+  if (ref.watch(currentUserProvider) == null) return false;
+  return ref.watch(appSettingsRepositoryProvider).isCurrentUserAdmin();
 });
+
+final maintenanceModeProvider =
+    StateNotifierProvider<MaintenanceModeNotifier, AsyncValue<bool>>((ref) {
+      return MaintenanceModeNotifier(ref.read(appSettingsRepositoryProvider));
+    });
 
 class MaintenanceModeNotifier extends StateNotifier<AsyncValue<bool>> {
   final AppSettingsRepository _repo;

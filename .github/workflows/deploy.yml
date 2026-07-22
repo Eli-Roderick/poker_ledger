@@ -27,6 +27,27 @@ jobs:
       
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Reject retired production APIs
+        run: |
+          if rg -n --glob '*.dart' \
+            'searchLinkedPlayers|addPlayerToSession|updateSessionGroups|listSessionsAsLinkedPlayer|listQuickAddSumsByPlayer|getOrCreateOpenSession|openSessionProvider|playersListProvider|followStatusProvider' \
+            lib; then
+            echo "A retired roster, sharing, or follow API is reachable."
+            exit 1
+          fi
+          if rg -n -U --glob '*.dart' \
+            "\\.from\\('ledger_events'\\)\\s*\\.(insert|update|delete)" \
+            lib; then
+            echo "Ledger events must be changed only through transactional RPCs."
+            exit 1
+          fi
       
       - name: Build web
         run: flutter build web --release --base-href "/poker_ledger/"
@@ -36,12 +57,60 @@ jobs:
         with:
           path: build/web
 
+  database-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Run database and RLS tests
+        run: supabase test db
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+
+      - name: Run transaction concurrency tests
+        run: bash supabase/tests/concurrency_v2.sh
+
+  production-backend-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [database-tests]
+    env:
+      POKER_LEDGER_DATABASE_URL: ${{ secrets.POKER_LEDGER_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require production database connection
+        run: |
+          if [ -z "$POKER_LEDGER_DATABASE_URL" ]; then
+            echo "Configure the POKER_LEDGER_DATABASE_URL repository secret."
+            exit 1
+          fi
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+
+      - name: Verify production backend contract
+        run: >
+          psql "$POKER_LEDGER_DATABASE_URL"
+          --no-psqlrc
+          --set ON_ERROR_STOP=1
+          --file supabase/tests/production_backend_contract.sql
+
   deploy:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, database-tests, production-backend-contract]
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

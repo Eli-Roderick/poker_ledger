@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../data/profile_providers.dart';
 import '../domain/profile_models.dart';
 import '../../session/presentation/session_summary_screen.dart';
+import '../../session/presentation/v2_game_flow_screen.dart';
 
 class UserHistoryScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -38,7 +39,10 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final params = UserProfileParams(userId: widget.userId, groupId: _selectedGroupId);
+    final params = UserProfileParams(
+      userId: widget.userId,
+      groupId: _selectedGroupId,
+    );
     final sessionsAsync = ref.watch(userSessionsProvider(params));
     final mutualGroupsAsync = ref.watch(mutualGroupsProvider(widget.userId));
 
@@ -55,36 +59,55 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
       ),
       body: sessionsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (_, __) =>
+            const Center(child: Text('Game history could not be loaded.')),
         data: (sessions) {
           // Apply all filters to get the filtered list
           var filteredSessions = sessions.toList();
-          
-          // Note: showSharedOnly no longer filters - all sessions are "shared" 
+
+          // Note: showSharedOnly no longer filters - all sessions are "shared"
           // since they represent sessions where both users participated together
-          
+
           // Filter by date range if set
           if (_startDate != null) {
-            filteredSessions = filteredSessions.where((s) => !s.startedAt.isBefore(_startDate!)).toList();
+            filteredSessions = filteredSessions
+                .where((s) => !s.startedAt.isBefore(_startDate!))
+                .toList();
           }
           if (_endDate != null) {
-            filteredSessions = filteredSessions.where((s) => !s.startedAt.isAfter(_endDate!.add(const Duration(days: 1)))).toList();
+            filteredSessions = filteredSessions
+                .where(
+                  (s) => !s.startedAt.isAfter(
+                    _endDate!.add(const Duration(days: 1)),
+                  ),
+                )
+                .toList();
           }
-          
+
           // Calculate stats from filtered sessions
           final totalSessions = filteredSessions.length;
-          final totalNetCents = filteredSessions.fold<int>(0, (sum, s) => sum + s.netCents);
+          final totalNetCents = filteredSessions.fold<int>(
+            0,
+            (sum, s) => sum + s.netCents,
+          );
           final wins = filteredSessions.where((s) => s.netCents > 0).length;
-          final winRate = totalSessions > 0 ? (wins / totalSessions * 100) : 0.0;
-          
+          final winRate = totalSessions > 0
+              ? (wins / totalSessions * 100)
+              : 0.0;
+
           return Column(
             children: [
               // Group filter dropdown
               _buildGroupFilter(context, mutualGroupsAsync),
-              
+
               // Stats summary - calculated from filtered sessions
-              _buildFilteredStatsSummary(context, totalSessions, winRate, totalNetCents),
-              
+              _buildFilteredStatsSummary(
+                context,
+                totalSessions,
+                winRate,
+                totalNetCents,
+              ),
+
               // Sessions list
               Expanded(
                 child: filteredSessions.isEmpty
@@ -97,7 +120,10 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
                           padding: const EdgeInsets.all(16),
                           itemCount: filteredSessions.length,
                           itemBuilder: (context, index) {
-                            return _buildSessionTile(context, filteredSessions[index]);
+                            return _buildSessionTile(
+                              context,
+                              filteredSessions[index],
+                            );
                           },
                         ),
                       ),
@@ -109,13 +135,16 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     );
   }
 
-  Widget _buildGroupFilter(BuildContext context, AsyncValue<List<Map<String, dynamic>>> groupsAsync) {
+  Widget _buildGroupFilter(
+    BuildContext context,
+    AsyncValue<List<Map<String, dynamic>>> groupsAsync,
+  ) {
     return groupsAsync.when(
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
       data: (groups) {
         if (groups.isEmpty) return const SizedBox.shrink();
-        
+
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
@@ -137,11 +166,16 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
                 isDense: true,
                 hint: const Text('All mutual groups'),
                 items: [
-                  const DropdownMenuItem<int?>(value: null, child: Text('All mutual groups')),
-                  ...groups.map((g) => DropdownMenuItem<int?>(
-                        value: g['id'] as int,
-                        child: Text(g['name'] as String),
-                      )),
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('All mutual groups'),
+                  ),
+                  ...groups.map(
+                    (g) => DropdownMenuItem<int?>(
+                      value: g['id'] as int,
+                      child: Text(g['name'] as String),
+                    ),
+                  ),
                 ],
                 onChanged: (value) {
                   setState(() => _selectedGroupId = value);
@@ -169,14 +203,21 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(
                 'Filters',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
             ),
             const Divider(height: 1),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('Date Range', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey)),
+              child: Text(
+                'Date Range',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(color: Colors.grey),
+              ),
             ),
             const SizedBox(height: 8),
             Padding(
@@ -188,16 +229,21 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
                       label: 'Start Date',
                       date: _startDate,
                       onTap: () async {
-                        final picked = await _pickDate(context, _startDate ?? DateTime.now());
+                        final picked = await _pickDate(
+                          context,
+                          _startDate ?? DateTime.now(),
+                        );
                         if (picked != null) {
                           setState(() => _startDate = picked);
                           if (context.mounted) Navigator.pop(context);
                         }
                       },
-                      onClear: _startDate != null ? () {
-                        setState(() => _startDate = null);
-                        Navigator.pop(context);
-                      } : null,
+                      onClear: _startDate != null
+                          ? () {
+                              setState(() => _startDate = null);
+                              Navigator.pop(context);
+                            }
+                          : null,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -206,16 +252,21 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
                       label: 'End Date',
                       date: _endDate,
                       onTap: () async {
-                        final picked = await _pickDate(context, _endDate ?? DateTime.now());
+                        final picked = await _pickDate(
+                          context,
+                          _endDate ?? DateTime.now(),
+                        );
                         if (picked != null) {
                           setState(() => _endDate = picked);
                           if (context.mounted) Navigator.pop(context);
                         }
                       },
-                      onClear: _endDate != null ? () {
-                        setState(() => _endDate = null);
-                        Navigator.pop(context);
-                      } : null,
+                      onClear: _endDate != null
+                          ? () {
+                              setState(() => _endDate = null);
+                              Navigator.pop(context);
+                            }
+                          : null,
                     ),
                   ),
                 ],
@@ -246,10 +297,20 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     final now = DateTime.now();
     final first = DateTime(now.year - 5);
     final last = DateTime(now.year + 5);
-    return showDatePicker(context: context, initialDate: initial, firstDate: first, lastDate: last);
+    return showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
+    );
   }
 
-  Widget _buildFilteredStatsSummary(BuildContext context, int totalSessions, double winRate, int totalNetCents) {
+  Widget _buildFilteredStatsSummary(
+    BuildContext context,
+    int totalSessions,
+    double winRate,
+    int totalNetCents,
+  ) {
     final netColor = totalNetCents == 0
         ? Theme.of(context).colorScheme.outline
         : (totalNetCents > 0 ? Colors.green : Colors.red);
@@ -275,21 +336,26 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
     );
   }
 
-  Widget _buildMiniStat(BuildContext context, String label, String value, {Color? valueColor}) {
+  Widget _buildMiniStat(
+    BuildContext context,
+    String label,
+    String value, {
+    Color? valueColor,
+  }) {
     return Column(
       children: [
         Text(
           value,
           style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: valueColor,
-              ),
+            fontWeight: FontWeight.bold,
+            color: valueColor,
+          ),
         ),
         Text(
           label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.outline,
-              ),
+            color: Theme.of(context).colorScheme.outline,
+          ),
         ),
       ],
     );
@@ -324,7 +390,11 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
           children: [
             Text(
               _currency.format(session.netCents / 100),
-              style: TextStyle(fontWeight: FontWeight.bold, color: netColor, fontSize: 16),
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: netColor,
+                fontSize: 16,
+              ),
             ),
             Text(
               session.finalized ? 'Finalized' : 'In progress',
@@ -335,7 +405,9 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => SessionSummaryScreen(sessionId: session.sessionId),
+              builder: (_) => session.ledgerVersion == 2
+                  ? V2GameFlowScreen(sessionId: session.sessionId)
+                  : SessionSummaryScreen(sessionId: session.sessionId),
             ),
           );
         },
@@ -353,15 +425,21 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
             Icon(Icons.casino_outlined, size: 64, color: Colors.grey.shade400),
             const SizedBox(height: 16),
             Text(
-              widget.showSharedOnly ? 'No shared games' : 'No games found',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.grey),
+              widget.showSharedOnly
+                  ? 'No mutual-group games'
+                  : 'No games found',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: Colors.grey),
             ),
             const SizedBox(height: 8),
             Text(
               widget.showSharedOnly
-                  ? 'Games shared to mutual groups will appear here.'
+                  ? 'Games attached to mutual groups will appear here.'
                   : 'Try adjusting your filters.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
               textAlign: TextAlign.center,
             ),
           ],
@@ -369,7 +447,6 @@ class _UserHistoryScreenState extends ConsumerState<UserHistoryScreen> {
       ),
     );
   }
-
 }
 
 class _DateButton extends StatelessWidget {
@@ -377,7 +454,12 @@ class _DateButton extends StatelessWidget {
   final DateTime? date;
   final VoidCallback onTap;
   final VoidCallback? onClear;
-  const _DateButton({required this.label, required this.date, required this.onTap, this.onClear});
+  const _DateButton({
+    required this.label,
+    required this.date,
+    required this.onTap,
+    this.onClear,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +476,12 @@ class _DateButton extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey)),
+                Text(
+                  label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall?.copyWith(color: Colors.grey),
+                ),
                 const SizedBox(height: 2),
                 Text(text, style: Theme.of(context).textTheme.bodyMedium),
               ],
