@@ -38,15 +38,9 @@ values
     now(), now()
   );
 
-insert into public.v2_game_flow_enrollment (
-  user_id, cohort, enabled, enabled_at
-)
-values (
-  '70000000-0000-4000-8000-000000000002',
-  'test',
-  true,
-  now()
-);
+insert into public.feature_enrollments (feature_key, user_id)
+values ('v2_game_flow', '70000000-0000-4000-8000-000000000002')
+on conflict do nothing;
 
 insert into public.groups (id, name, owner_id)
 values (
@@ -77,8 +71,8 @@ values (
   'Transfer status game',
   2,
   2,
-  'finalized',
-  true,
+  'settling',
+  false,
   1000,
   97001
 );
@@ -104,7 +98,11 @@ values (
   97301, 97100, 1, 4, 1, 'pairwise', 2000, 2000,
   '70000000-0000-4000-8000-000000000002'
 );
-update public.sessions set latest_revision_id = 97301 where id = 97100;
+update public.sessions
+set latest_revision_id = 97301,
+    phase = 'finalized',
+    finalized = true
+where id = 97100;
 insert into public.settlement_transfers (
   id, revision_id, from_participant_id, to_participant_id, amount_cents
 )
@@ -303,6 +301,7 @@ select lives_ok(
       'Lifecycle V2 game',
       null,
       1000,
+      'USD',
       true,
       '71000000-0000-4000-8000-000000000005'
     )
@@ -455,7 +454,7 @@ select throws_ok(
     )
   $$,
   '42501',
-  'Only the payer or recipient can update transfer status',
+  'Only a transfer participant can dispute it',
   'unrelated accounts cannot alter transfer status'
 );
 

@@ -71,7 +71,7 @@ jobs:
         run: supabase start
 
       - name: Run database and RLS tests
-        run: supabase test db
+        run: supabase test db supabase/tests/database
 
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install --yes postgresql-client
@@ -103,7 +103,7 @@ jobs:
           psql "$POKER_LEDGER_DATABASE_URL"
           --no-psqlrc
           --set ON_ERROR_STOP=1
-          --file supabase/tests/production_backend_contract.sql
+          --file supabase/production_checks/production_backend_contract.sql
 
   deploy:
     environment:

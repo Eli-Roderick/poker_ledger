@@ -1252,39 +1252,12 @@ grant execute on function public.game_participant_totals(bigint[])
 grant execute on function public.my_stats() to authenticated;
 grant execute on function public.group_stats(bigint) to authenticated;
 
+-- Keep the global kill switch enabled, but preserve explicit canary enrollment.
+-- Do not bulk-enroll every profile or auto-enroll every signup; production
+-- remains a small feature_enrollments cohort until a separate rollout.
 update public.app_settings
 set value = 'true'
 where key = 'v2_enrollment_enabled';
 
-insert into public.feature_enrollments (feature_key, user_id)
-select 'v2_game_flow', profile.id
-from public.profiles profile
-join auth.users auth_user on auth_user.id = profile.id
-where profile.deleted_at is null
-  and profile.suspended_at is null
-on conflict do nothing;
-
-create or replace function private.enroll_new_profile_in_v2()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if coalesce((
-    select value::boolean
-    from public.app_settings
-    where key = 'v2_enrollment_enabled'
-  ), false) then
-    insert into public.feature_enrollments (feature_key, user_id)
-    values ('v2_game_flow', new.id)
-    on conflict do nothing;
-  end if;
-  return new;
-end;
-$$;
-
 drop trigger if exists profiles_enroll_new_v2 on public.profiles;
-create trigger profiles_enroll_new_v2
-  after insert on public.profiles
-  for each row execute function private.enroll_new_profile_in_v2();
+drop function if exists private.enroll_new_profile_in_v2();

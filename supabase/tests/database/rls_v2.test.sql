@@ -36,7 +36,7 @@ insert into public.sessions (
   ledger_version, phase, finalized, default_buy_in_cents
 )
 values
-  (9101, '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Historical group game', 9001, 2, 2, 'finalized', true, 2000),
+  (9101, '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Historical group game', 9001, 2, 2, 'settling', false, 2000),
   (9102, '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Current group game', 9001, 2, 2, 'live', false, 2000),
   (9103, '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Private game', null, 2, 2, 'live', false, 2000);
 
@@ -69,7 +69,11 @@ values (
   9301, 9101, 1, 4, 1, 'pairwise', 4000, 4000,
   '10000000-0000-4000-8000-000000000001'
 );
-update public.sessions set latest_revision_id = 9301 where id = 9101;
+update public.sessions
+set latest_revision_id = 9301,
+    phase = 'finalized',
+    finalized = true
+where id = 9101;
 insert into public.settlement_transfers (
   revision_id, from_participant_id, to_participant_id, amount_cents
 )

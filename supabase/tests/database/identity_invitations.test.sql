@@ -19,6 +19,13 @@ insert into public.feature_enrollments (feature_key, user_id)
 values ('v2_game_flow', '70000000-0000-4000-8000-000000000001')
 on conflict do nothing;
 
+update public.profiles
+set discoverable = true
+where id in (
+  '70000000-0000-4000-8000-000000000002',
+  '70000000-0000-4000-8000-000000000003'
+);
+
 create temporary table invitation_test_state (
   session_id bigint,
   invitation_id uuid,

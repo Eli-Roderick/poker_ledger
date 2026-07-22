@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(8);
+select plan(9);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -16,6 +16,10 @@ values
 insert into public.feature_enrollments (feature_key, user_id)
 values ('v2_game_flow', '72000000-0000-4000-8000-000000000001')
 on conflict do nothing;
+
+delete from public.feature_enrollments
+where feature_key = 'v2_game_flow'
+  and user_id = '72000000-0000-4000-8000-000000000002';
 
 insert into public.players (user_id, name)
 values ('72000000-0000-4000-8000-000000000001', 'Unresolved guest');
@@ -89,6 +93,7 @@ select throws_ok(
     '72100000-0000-4000-8000-000000000001'
   )$$,
   '55000',
+  'New game creation is temporarily unavailable',
   'emergency switch blocks the server write even if UI is stale'
 );
 reset role;
@@ -126,8 +131,11 @@ select is(
   'an open legacy game is never converted during rollout'
 );
 select ok(
-  private.refresh_v2_reconciliation_findings() >= 1
-  and exists (
+  private.refresh_v2_reconciliation_findings() >= 1,
+  'reconciliation refresh reports at least one finding'
+);
+select ok(
+  exists (
     select 1
     from private.v2_reconciliation_findings
     where issue_type = 'unresolved_guest'

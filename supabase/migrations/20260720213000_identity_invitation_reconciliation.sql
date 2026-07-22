@@ -294,7 +294,7 @@ begin
   end if;
   insert into public.game_invitations (
     session_id, profile_id, direction, status,
-    invited_by, expires_at
+    created_by, expires_at
   )
   values (
     p_session_id, p_profile_id, 'host_invite', 'pending_invitee',
@@ -411,8 +411,8 @@ begin
   if prior is not null then return prior; end if;
   if (
     select count(*) >= 8
-    from public.game_join_attempts
-    where actor_id = actor
+    from public.join_code_attempts
+    where profile_id = actor
       and attempted_at > now() - interval '15 minutes'
   ) then
     raise exception 'Too many join-code attempts; try again later'
@@ -431,7 +431,7 @@ begin
     and revoked_at is null
     and expires_at > now()
   for update;
-  insert into public.game_join_attempts (actor_id, matched)
+  insert into public.join_code_attempts (profile_id, succeeded)
   values (actor, found);
   if not found then
     result := jsonb_build_object(
@@ -489,11 +489,11 @@ begin
   end if;
   insert into public.game_invitations (
     session_id, profile_id, direction, status,
-    invited_by, join_code_id, expires_at
+    created_by, expires_at
   )
   values (
     game.id, actor, 'join_request', 'pending_host',
-    actor, join_code.id, least(join_code.expires_at, now() + interval '2 hours')
+    actor, least(join_code.expires_at, now() + interval '2 hours')
   )
   returning * into invitation;
   result := jsonb_build_object(

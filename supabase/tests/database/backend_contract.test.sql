@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(5);
+select plan(9);
 
 create temporary table expected_backend_functions (signature text primary key);
 insert into expected_backend_functions (signature)
@@ -90,6 +90,51 @@ select ok(
       'execute'
     ),
   'credential-verified restoration remains available before sign-in'
+);
+
+select ok(
+  has_table_privilege('authenticated', 'public.sessions', 'SELECT')
+    and has_table_privilege('authenticated', 'public.sessions', 'INSERT')
+    and has_table_privilege('authenticated', 'public.session_players', 'SELECT')
+    and has_table_privilege('authenticated', 'public.players', 'SELECT')
+    and has_table_privilege('authenticated', 'public.ledger_events', 'SELECT')
+    and has_table_privilege('authenticated', 'public.finalization_revisions', 'SELECT')
+    and has_table_privilege('authenticated', 'public.settlement_transfers', 'SELECT')
+    and has_table_privilege('authenticated', 'public.game_invitations', 'SELECT')
+    and has_column_privilege(
+      'authenticated', 'public.user_notifications', 'read_at', 'UPDATE'
+    ),
+  'authenticated clients retain required least-privilege table access'
+);
+
+select ok(
+  not has_table_privilege('authenticated', 'public.ledger_events', 'INSERT')
+    and not has_table_privilege('authenticated', 'public.ledger_events', 'UPDATE')
+    and not has_table_privilege('authenticated', 'public.ledger_events', 'DELETE')
+    and not has_table_privilege(
+      'authenticated', 'public.finalization_revisions', 'INSERT'
+    )
+    and not has_table_privilege(
+      'authenticated', 'public.settlement_transfers', 'INSERT'
+    )
+    and not has_table_privilege('authenticated', 'public.game_invitations', 'INSERT'),
+  'append-only and invitation tables remain RPC-only for writes'
+);
+
+select ok(
+  not has_table_privilege('authenticated', 'public.app_admins', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.feature_enrollments', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.game_join_codes', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.join_code_attempts', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.idempotency_requests', 'SELECT'),
+  'sensitive rollout and join-code tables stay inaccessible to clients'
+);
+
+select ok(
+  not has_column_privilege(
+    'authenticated', 'public.user_notifications', 'body', 'UPDATE'
+  ),
+  'notification content remains non-writable for authenticated clients'
 );
 
 select * from finish();
