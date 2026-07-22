@@ -82,23 +82,35 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           for test_file in supabase/tests/database/*.test.sql; do
             echo "::group::${test_file}"
-            if supabase test db "$test_file" 2>&1 | tee -a database-tests.log; then
+            tmp_log="$(mktemp)"
+            if supabase test db "$test_file" >"$tmp_log" 2>&1; then
+              cat "$tmp_log" | tee -a database-tests.log >/dev/null
               echo "- PASS \`${test_file}\`" >> "$GITHUB_STEP_SUMMARY"
             else
               status=1
+              cat "$tmp_log" | tee -a database-tests.log >/dev/null
               echo "- FAIL \`${test_file}\`" >> "$GITHUB_STEP_SUMMARY"
               echo "::error::Database test failed: ${test_file}"
+              {
+                echo
+                echo "### Failures in \`${test_file}\`"
+                echo
+                echo '```'
+                # Prefer pgTAP failure details; fall back to the whole file output.
+                if grep -E 'not ok|Looks like|ERROR:|FATAL:|permission denied|Failed' "$tmp_log" >/dev/null; then
+                  grep -E 'not ok|Looks like|ERROR:|FATAL:|permission denied|Failed|#' "$tmp_log" | tail -n 80
+                else
+                  tail -n 80 "$tmp_log"
+                fi
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              grep -E 'not ok|ERROR:|FATAL:|permission denied' "$tmp_log" | tail -n 20 | while IFS= read -r line; do
+                echo "::error file=${test_file}::${line}"
+              done
             fi
+            rm -f "$tmp_log"
             echo "::endgroup::"
           done
-          {
-            echo
-            echo '### Last 120 log lines'
-            echo
-            echo '```'
-            tail -n 120 database-tests.log
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
       - name: Upload database test log
