@@ -152,33 +152,41 @@ jobs:
         env:
           PGSSLMODE: require
         run: |
-          set -euo pipefail
           db_url="$POKER_LEDGER_DATABASE_URL"
           case "$db_url" in
             *sslmode=*) ;;
             *\?*) db_url="${db_url}&sslmode=require" ;;
             *) db_url="${db_url}?sslmode=require" ;;
           esac
-          if ! psql "$db_url" \
+          set +e
+          psql "$db_url" \
             --no-psqlrc \
             --set ON_ERROR_STOP=1 \
             --file supabase/production_checks/production_backend_contract.sql \
-            2>&1 | tee production-contract.log; then
-            {
-              echo '## Production backend contract failure'
+            >production-contract.log 2>&1
+          status=$?
+          set -e
+          cat production-contract.log
+          {
+            echo '## Production backend contract'
+            echo
+            echo "Exit code: ${status}"
+            echo
+            echo '```'
+            cat production-contract.log
+            echo '```'
+            if [ "$status" -ne 0 ]; then
               echo
-              echo '```'
-              cat production-contract.log
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            while IFS= read -r line; do
-              case "$line" in
-                *ERROR*|*FATAL*|*password*|*SSL*|*could not connect*|*Timeout*)
-                  echo "::error::$line"
-                  ;;
-              esac
-            done < production-contract.log
-            exit 1
+              echo 'If this is a connection error, update POKER_LEDGER_DATABASE_URL to the'
+              echo 'Supabase Session pooler URI from Project Settings → Database → Connect.'
+              echo 'URL-encode any special characters in the password.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            tail -n 30 production-contract.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit "$status"
           fi
 
   deploy:
