@@ -71,7 +71,18 @@ jobs:
         run: supabase start
 
       - name: Run database and RLS tests
-        run: supabase test db supabase/tests/database
+        id: db_tests
+        run: |
+          set -o pipefail
+          supabase test db supabase/tests/database 2>&1 | tee database-tests.log
+
+      - name: Upload database test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-tests-log
+          path: database-tests.log
+          if-no-files-found: ignore
 
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install --yes postgresql-client

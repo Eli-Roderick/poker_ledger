@@ -431,9 +431,9 @@ begin
     and revoked_at is null
     and expires_at > now()
   for update;
-  insert into public.join_code_attempts (profile_id, succeeded)
-  values (actor, found);
   if not found then
+    insert into public.join_code_attempts (profile_id, succeeded)
+    values (actor, false);
     result := jsonb_build_object(
       'status', 'invalid',
       'message', 'Code is invalid or expired'
@@ -441,6 +441,8 @@ begin
     perform private.complete_idempotent(actor, p_idempotency_key, result);
     return result;
   end if;
+  insert into public.join_code_attempts (profile_id, succeeded)
+  values (actor, true);
   select * into game
   from public.sessions
   where id = join_code.session_id

@@ -172,6 +172,7 @@ select lives_ok(
   $$,
   'account deletion request succeeds after transfer'
 );
+reset role;
 select ok(
   (
     select deleted_at is not null
@@ -190,7 +191,6 @@ select ok(
   'deletion request disables sign-in'
 );
 
-reset role;
 set local role anon;
 select is(
   (
@@ -224,6 +224,7 @@ select is(
   true,
   'valid credentials restore the account'
 );
+reset role;
 select ok(
   (
     select deleted_at is null and deletion_scheduled_at is null
@@ -244,7 +245,6 @@ select ok(
   'restoration safely reconnects deletion-removed memberships'
 );
 
-reset role;
 set local role authenticated;
 set local request.jwt.claim.sub =
   '70000000-0000-4000-8000-000000000002';
