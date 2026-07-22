@@ -149,11 +149,37 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes postgresql-client
 
       - name: Verify production backend contract
-        run: >
-          psql "$POKER_LEDGER_DATABASE_URL"
-          --no-psqlrc
-          --set ON_ERROR_STOP=1
-          --file supabase/production_checks/production_backend_contract.sql
+        env:
+          PGSSLMODE: require
+        run: |
+          set -euo pipefail
+          db_url="$POKER_LEDGER_DATABASE_URL"
+          case "$db_url" in
+            *sslmode=*) ;;
+            *\?*) db_url="${db_url}&sslmode=require" ;;
+            *) db_url="${db_url}?sslmode=require" ;;
+          esac
+          if ! psql "$db_url" \
+            --no-psqlrc \
+            --set ON_ERROR_STOP=1 \
+            --file supabase/production_checks/production_backend_contract.sql \
+            2>&1 | tee production-contract.log; then
+            {
+              echo '## Production backend contract failure'
+              echo
+              echo '```'
+              cat production-contract.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              case "$line" in
+                *ERROR*|*FATAL*|*password*|*SSL*|*could not connect*|*Timeout*)
+                  echo "::error::$line"
+                  ;;
+              esac
+            done < production-contract.log
+            exit 1
+          fi
 
   deploy:
     environment:
