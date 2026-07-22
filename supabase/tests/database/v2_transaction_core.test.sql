@@ -78,6 +78,7 @@ select is(
 select throws_ok(
   $$select public.create_v2_session('Different request', null, 1000, 'USD', true, '51000000-0000-4000-8000-000000000001')$$,
   '22023',
+  'Idempotency key was already used for another request',
   'reusing an idempotency key with another payload is rejected'
 );
 reset role;
@@ -176,6 +177,7 @@ select throws_ok(
     '51000000-0000-4000-8000-000000000005'
   ),
   '22023',
+  'That financial event is not valid in this game phase',
   'rebuys are rejected after settlement starts'
 );
 
@@ -184,7 +186,7 @@ with event_result as (
     (select session_id from core_test_state),
     (select host_participant_id from core_test_state),
     'cash_out',
-    1500,
+    1000,
     null,
     null,
     '51000000-0000-4000-8000-000000000006'
@@ -197,7 +199,7 @@ select public.record_v2_ledger_event(
   (select session_id from core_test_state),
   (select player_participant_id from core_test_state),
   'cash_out',
-  1000,
+  1500,
   null,
   null,
   '51000000-0000-4000-8000-000000000007'
@@ -259,7 +261,7 @@ select public.correct_finalized_v2_session(
       'replacement_type',
       'cash_out',
       'replacement_amount_cents',
-      1400
+      900
     )
   ),
   '51000000-0000-4000-8000-000000000009'
@@ -303,6 +305,7 @@ select throws_ok(
     '51000000-0000-4000-8000-000000000010'
   ),
   '0A000',
+  'Finalized games cannot be reopened; create an atomic correction revision',
   'finalized games cannot be silently reopened'
 );
 reset role;

@@ -198,11 +198,13 @@ select set_config(
 select throws_ok(
   $$update public.ledger_events set amount_cents = 9999 where id = (select min(id) from public.ledger_events where session_id = 9101)$$,
   '42501',
+  'permission denied for table ledger_events',
   'host cannot update append-only ledger rows directly'
 );
 select throws_ok(
   $$delete from public.ledger_events where session_id = 9101$$,
   '42501',
+  'permission denied for table ledger_events',
   'host cannot delete append-only ledger rows directly'
 );
 update public.sessions set finalized = false where id = 9101;

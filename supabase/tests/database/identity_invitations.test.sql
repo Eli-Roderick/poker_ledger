@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(14);
+select plan(15);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -138,6 +138,7 @@ select is(
   12,
   'join code has 48 bits of random hexadecimal entropy'
 );
+reset role;
 select isnt(
   (
     select encode(code_digest, 'escape')
@@ -149,6 +150,12 @@ select isnt(
   'join code plaintext is never stored'
 );
 
+select set_config(
+  'request.jwt.claim.sub',
+  '70000000-0000-4000-8000-000000000001',
+  true
+);
+set local role authenticated;
 select public.start_v2_session(
   (select session_id from invitation_test_state),
   'pairwise',
@@ -244,7 +251,8 @@ select throws_ok(
     'update public.sessions set group_id = 1 where id = %s',
     (select session_id from invitation_test_state)
   ),
-  '23514',
+  'P0001',
+  'Game group is locked',
   'A game group cannot change after creation'
 );
 select throws_ok(
@@ -254,6 +262,7 @@ select throws_ok(
     (select session_id from invitation_test_state)
   ),
   '23514',
+  'Backup host must be an accepted player or authorized group manager',
   'an unrelated account cannot become backup host'
 );
 select is(
