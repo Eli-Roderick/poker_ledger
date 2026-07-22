@@ -73,8 +73,33 @@ jobs:
       - name: Run database and RLS tests
         id: db_tests
         run: |
-          set -o pipefail
-          supabase test db supabase/tests/database 2>&1 | tee database-tests.log
+          set -euo pipefail
+          status=0
+          : > database-tests.log
+          {
+            echo '## Database tests'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          for test_file in supabase/tests/database/*.test.sql; do
+            echo "::group::${test_file}"
+            if supabase test db "$test_file" 2>&1 | tee -a database-tests.log; then
+              echo "- PASS \`${test_file}\`" >> "$GITHUB_STEP_SUMMARY"
+            else
+              status=1
+              echo "- FAIL \`${test_file}\`" >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Database test failed: ${test_file}"
+            fi
+            echo "::endgroup::"
+          done
+          {
+            echo
+            echo '### Last 120 log lines'
+            echo
+            echo '```'
+            tail -n 120 database-tests.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       - name: Upload database test log
         if: always()
