@@ -229,7 +229,9 @@ values
 on conflict do nothing;
 
 insert into public.feature_enrollments (feature_key, user_id)
-select 'v2_game_flow', user_id from public.app_admins
+select 'v2_game_flow', administrator.user_id
+from public.app_admins administrator
+join auth.users auth_user on auth_user.id = administrator.user_id
 on conflict do nothing;
 
 create table if not exists public.game_invitations (

@@ -1259,6 +1259,7 @@ where key = 'v2_enrollment_enabled';
 insert into public.feature_enrollments (feature_key, user_id)
 select 'v2_game_flow', profile.id
 from public.profiles profile
+join auth.users auth_user on auth_user.id = profile.id
 where profile.deleted_at is null
   and profile.suspended_at is null
 on conflict do nothing;
