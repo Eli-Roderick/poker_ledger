@@ -139,7 +139,9 @@ jobs:
       - name: Require production database connection
         run: |
           if [ -z "$POKER_LEDGER_DATABASE_URL" ]; then
-            echo "Configure the POKER_LEDGER_DATABASE_URL repository secret."
+            echo "::error::Missing repository secret POKER_LEDGER_DATABASE_URL."
+            echo "Add a Postgres connection string for the Poker Ledger production database"
+            echo "under Settings → Secrets and variables → Actions, then re-run this job."
             exit 1
           fi
 
