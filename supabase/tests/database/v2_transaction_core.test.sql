@@ -112,10 +112,11 @@ select set_config(
 
 select lives_ok(
   format(
-    'select public.start_v2_session(%s, %L, null, %L)',
+    'select public.start_v2_session(%s, %L, null::bigint, %L, %L::bigint[])',
     (select session_id from core_test_state),
     'pairwise',
-    '51000000-0000-4000-8000-000000000002'
+    '51000000-0000-4000-8000-000000000002',
+    '{}'
   ),
   'two accepted players can start a versioned game'
 );

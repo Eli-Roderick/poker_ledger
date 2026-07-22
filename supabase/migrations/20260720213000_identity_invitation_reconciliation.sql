@@ -201,7 +201,7 @@ begin
     where profile_id is not null and removed_at is null
   do nothing
   returning * into participant;
-  if participant.id is null then
+  if not found then
     select * into participant
     from public.session_players
     where session_id = p_session_id

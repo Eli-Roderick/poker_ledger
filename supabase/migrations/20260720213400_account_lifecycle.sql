@@ -318,27 +318,29 @@ begin
       updated_at = now()
   where id = p_group_id;
   update public.group_members
-  set status = 'removed',
-      role = 'member',
-      can_manage_games = false,
-      left_at = now(),
-      removed_for_account_deletion = true
+  set status = 'accepted',
+      role = 'administrator',
+      can_manage_games = true,
+      left_at = null,
+      removed_for_account_deletion = false,
+      accepted_at = coalesce(accepted_at, now())
   where group_id = p_group_id
     and user_id = p_new_owner_id;
   insert into public.group_members (
     group_id, user_id, status, role, can_manage_games,
-    accepted_at, joined_at, left_at
+    accepted_at, joined_at, left_at, removed_for_account_deletion
   )
   values (
     p_group_id, actor, 'accepted', 'administrator', true,
-    now(), now(), null
+    now(), now(), null, false
   )
   on conflict (group_id, user_id) do update set
     status = 'accepted',
     role = 'administrator',
     can_manage_games = true,
     accepted_at = coalesce(public.group_members.accepted_at, now()),
-    left_at = null;
+    left_at = null,
+    removed_for_account_deletion = false;
   result := jsonb_build_object(
     'group_id', p_group_id,
     'owner_id', p_new_owner_id

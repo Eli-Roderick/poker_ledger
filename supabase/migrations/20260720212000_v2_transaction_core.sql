@@ -233,7 +233,7 @@ begin
   do nothing
   returning * into participant;
 
-  if participant.id is null then
+  if not found then
     select * into participant
     from public.session_players
     where session_id = p_session_id
@@ -787,7 +787,7 @@ as $$
 declare
   actor uuid := private.require_actor();
   game public.sessions;
-  participant record;
+  player_row record;
   sequence_number bigint;
   prior jsonb;
   result jsonb;
@@ -801,7 +801,8 @@ begin
       'session_id', p_session_id,
       'settlement_mode', p_settlement_mode,
       'banker_participant_id', p_banker_participant_id,
-      'paid_upfront_participant_ids', p_paid_upfront_participant_ids
+      'paid_upfront_participant_ids',
+        coalesce(p_paid_upfront_participant_ids, '{}'::bigint[])
     )
   );
   if prior is not null then return prior; end if;
@@ -832,25 +833,29 @@ begin
   end if;
   if exists (
     select 1
-    from unnest(p_paid_upfront_participant_ids) selected_id
+    from unnest(
+      coalesce(p_paid_upfront_participant_ids, '{}'::bigint[])
+    ) as selected(selected_id)
     where not exists (
       select 1
-      from public.session_players participant
-      where participant.id = selected_id
-        and participant.session_id = p_session_id
-        and participant.removed_at is null
+      from public.session_players sp
+      where sp.id = selected.selected_id
+        and sp.session_id = p_session_id
+        and sp.removed_at is null
     )
   ) then
     raise exception 'Paid-upfront selections must be accepted players'
       using errcode = '22023';
   end if;
   update public.session_players
-  set paid_upfront = id = any(p_paid_upfront_participant_ids)
+  set paid_upfront = id = any(
+    coalesce(p_paid_upfront_participant_ids, '{}'::bigint[])
+  )
   where session_id = p_session_id
     and removed_at is null;
 
   sequence_number := game.next_event_sequence;
-  for participant in
+  for player_row in
     select id
     from public.session_players
     where session_id = p_session_id and removed_at is null
@@ -869,7 +874,7 @@ begin
     values (
       p_session_id,
       sequence_number,
-      participant.id,
+      player_row.id,
       'initial_buy_in',
       game.default_buy_in_cents,
       actor,
