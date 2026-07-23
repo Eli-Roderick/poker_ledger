@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(16);
+select plan(21);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -91,8 +91,46 @@ select is(
     true,
     '71000000-0000-4000-8000-000000000003'
   ) ->> 'status',
+  'accepted_pending_buy_in',
+  'invitee accept waits for buy-in confirmation before seating'
+);
+reset role;
+
+select is(
+  (
+    select count(*)::integer
+    from public.session_players
+    where session_id = (select session_id from invitation_test_state)
+      and profile_id = '70000000-0000-4000-8000-000000000002'
+      and not legacy_participant
+  ),
+  0,
+  'accepting does not seat the invitee until buy-in is confirmed'
+);
+select is(
+  (
+    select count(*)::integer
+    from public.ledger_events
+    where session_id = (select session_id from invitation_test_state)
+  ),
+  0,
+  'draft acceptance does not create a financial event early'
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  '70000000-0000-4000-8000-000000000002',
+  true
+);
+set local role authenticated;
+select is(
+  public.confirm_game_join_buy_in(
+    (select invitation_id from invitation_test_state),
+    2500,
+    '71000000-0000-4000-8000-000000000013'
+  ) ->> 'status',
   'accepted',
-  'invitee explicitly accepts a host invitation'
+  'invitee confirms buy-in to become seated'
 );
 reset role;
 
@@ -105,7 +143,7 @@ select is(
       and not legacy_participant
   ),
   1,
-  'accepted account becomes one account-backed participant'
+  'confirmed buy-in creates one account-backed participant'
 );
 select is(
   (
@@ -114,7 +152,7 @@ select is(
     where session_id = (select session_id from invitation_test_state)
   ),
   0,
-  'draft acceptance does not create a financial event early'
+  'draft buy-in confirmation still does not create a ledger event'
 );
 
 select set_config(
@@ -217,8 +255,40 @@ select is(
     true,
     '71000000-0000-4000-8000-000000000007'
   ) ->> 'status',
+  'accepted_pending_buy_in',
+  'host accept waits for the joiner to confirm buy-in'
+);
+reset role;
+
+select is(
+  (
+    select count(*)::integer
+    from public.ledger_events event
+    join public.session_players participant
+      on participant.id = event.participant_id
+    where event.session_id = (select session_id from invitation_test_state)
+      and participant.profile_id =
+        '70000000-0000-4000-8000-000000000003'
+      and event.event_type = 'initial_buy_in'
+  ),
+  0,
+  'live host accept does not create a buy-in before confirmation'
+);
+
+select set_config(
+  'request.jwt.claim.sub',
+  '70000000-0000-4000-8000-000000000003',
+  true
+);
+set local role authenticated;
+select is(
+  public.confirm_game_join_buy_in(
+    (select join_invitation_id from invitation_test_state),
+    2500,
+    '71000000-0000-4000-8000-000000000014'
+  ) ->> 'status',
   'accepted',
-  'host accepts the live join request'
+  'live joiner confirms buy-in to seat and fund'
 );
 reset role;
 
@@ -234,7 +304,7 @@ select is(
       and event.event_type = 'initial_buy_in'
   ),
   1,
-  'live acceptance atomically creates exactly one initial buy-in'
+  'live buy-in confirmation creates exactly one initial buy-in'
 );
 select is(
   (
@@ -248,7 +318,7 @@ select is(
       and event.event_type = 'initial_buy_in'
   ),
   2500::bigint,
-  'live join uses the game default buy-in'
+  'live join uses the confirmed buy-in amount'
 );
 select throws_ok(
   format(

@@ -21,6 +21,8 @@ values
   ('public.create_game_join_code(bigint,uuid)'),
   ('public.request_game_join_by_code(text,uuid)'),
   ('public.respond_to_game_invitation(uuid,boolean,uuid)'),
+  ('public.confirm_game_join_buy_in(uuid,bigint,uuid)'),
+  ('public.my_open_settlement_transfers()'),
   ('public.return_v2_session_to_live(bigint,text,uuid)'),
   ('public.cancel_v2_session(bigint,text,uuid)'),
   ('public.set_v2_backup_host(bigint,uuid,uuid)'),
