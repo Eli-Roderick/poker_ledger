@@ -11,7 +11,9 @@ import '../data/session_providers.dart';
 import '../data/v2_game_providers.dart';
 import '../../../utils/money.dart';
 import 'package:poker_ledger/src/features/help/presentation/help_screen.dart';
+import '../../../widgets/app_bar_action_button.dart';
 import 'game_setup_wizard.dart';
+import 'join_accepted_buy_in_dialog.dart';
 import 'session_summary_screen.dart';
 import 'v2_game_flow_screen.dart';
 
@@ -75,15 +77,14 @@ class SessionsHomeScreen extends ConsumerWidget {
           tooltip: 'Help',
         ),
         actions: [
-          IconButton(
-            tooltip: 'Enter join code',
-            onPressed: () => _enterJoinCode(context, ref),
-            icon: const Icon(Icons.password),
-          ),
-          IconButton(
-            tooltip: 'Game invitations',
-            onPressed: () => _showPendingInvitations(context, ref),
-            icon: const Icon(Icons.notifications_outlined),
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: AppBarActionButton(
+              label: 'Join',
+              icon: Icons.password,
+              filled: false,
+              onPressed: () => enterJoinCode(context, ref),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -530,7 +531,7 @@ Future<void> _createNewGame(BuildContext context, WidgetRef ref) async {
   }
 }
 
-Future<void> _enterJoinCode(BuildContext context, WidgetRef ref) async {
+Future<void> enterJoinCode(BuildContext context, WidgetRef ref) async {
   final controller = TextEditingController();
   final code = await showDialog<String>(
     context: context,
@@ -550,7 +551,7 @@ Future<void> _enterJoinCode(BuildContext context, WidgetRef ref) async {
             textCapitalization: TextCapitalization.characters,
             decoration: const InputDecoration(
               labelText: 'Join code',
-              hintText: 'A1B2C3D4E5F6',
+              hintText: 'ZDTFAA',
             ),
           ),
         ],
@@ -576,19 +577,35 @@ Future<void> _enterJoinCode(BuildContext context, WidgetRef ref) async {
     final result = await ref.read(v2GameRepositoryProvider).requestJoin(code);
     if (!context.mounted) return;
     final status = result['status'] as String?;
+    final sessionIdRaw = result['session_id'];
+    final sessionId = sessionIdRaw is int
+        ? sessionIdRaw
+        : int.tryParse('$sessionIdRaw');
+    final invitationId = result['invitation_id'] as String?;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           status == 'participating' || status == 'accepted'
               ? 'You are already in this game.'
+              : status == 'accepted_pending_buy_in'
+              ? 'Confirm your buy-in to join.'
               : status == 'pending_invitee'
               ? 'You already have an invitation to this game.'
               : 'Request sent. The host will approve or decline it.',
         ),
       ),
     );
-    if (status == 'participating' || status == 'accepted') {
-      final sessionId = result['session_id'] as int;
+    if (status == 'accepted_pending_buy_in' &&
+        sessionId != null &&
+        invitationId != null) {
+      await showJoinAcceptedBuyInDialog(
+        context: context,
+        ref: ref,
+        sessionId: sessionId,
+        invitationId: invitationId,
+      );
+    } else if ((status == 'participating' || status == 'accepted') &&
+        sessionId != null) {
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => V2GameFlowScreen(sessionId: sessionId),
@@ -604,127 +621,6 @@ Future<void> _enterJoinCode(BuildContext context, WidgetRef ref) async {
       );
     }
   }
-}
-
-Future<void> _showPendingInvitations(
-  BuildContext context,
-  WidgetRef ref,
-) async {
-  ref.invalidate(pendingGameInvitationsProvider);
-  await showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) => Consumer(
-      builder: (modalContext, ref, _) {
-        final invitations = ref.watch(pendingGameInvitationsProvider);
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: invitations.when(
-              loading: () => const SizedBox(
-                height: 240,
-                child: Center(child: CircularProgressIndicator()),
-              ),
-              error: (_, __) => const SizedBox(
-                height: 240,
-                child: Center(child: Text('Invitations could not be loaded.')),
-              ),
-              data: (items) => SizedBox(
-                height: 320,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Game invitations',
-                      style: Theme.of(modalContext).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 12),
-                    if (items.isEmpty)
-                      const Expanded(
-                        child: Center(
-                          child: Text('You have no pending invitations.'),
-                        ),
-                      )
-                    else
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: items.length,
-                          itemBuilder: (itemContext, index) {
-                            final invitation = items[index];
-                            return Card(
-                              child: ListTile(
-                                leading: const CircleAvatar(
-                                  child: Icon(Icons.casino),
-                                ),
-                                title: const Text('Poker game invitation'),
-                                subtitle: Text(
-                                  invitation.handle == null
-                                      ? 'Open the invitation to respond.'
-                                      : 'Invited as @${invitation.handle}',
-                                ),
-                                trailing: Wrap(
-                                  children: [
-                                    IconButton(
-                                      tooltip: 'Decline',
-                                      onPressed: () async {
-                                        await ref
-                                            .read(v2GameRepositoryProvider)
-                                            .respondToInvitation(
-                                              invitation.id,
-                                              false,
-                                            );
-                                        ref.invalidate(
-                                          pendingGameInvitationsProvider,
-                                        );
-                                      },
-                                      icon: const Icon(Icons.close),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Accept',
-                                      onPressed: () async {
-                                        await ref
-                                            .read(v2GameRepositoryProvider)
-                                            .respondToInvitation(
-                                              invitation.id,
-                                              true,
-                                            );
-                                        ref.invalidate(
-                                          pendingGameInvitationsProvider,
-                                        );
-                                        ref
-                                            .read(sessionsListProvider.notifier)
-                                            .refresh();
-                                        if (sheetContext.mounted) {
-                                          Navigator.pop(sheetContext);
-                                        }
-                                        if (context.mounted) {
-                                          await Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => V2GameFlowScreen(
-                                                sessionId: invitation.sessionId,
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      },
-                                      icon: const Icon(Icons.check),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    ),
-  );
 }
 
 class _NewGameDraft {

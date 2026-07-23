@@ -61,10 +61,14 @@ class MyApp extends ConsumerWidget {
       themeMode: themeMode,
       home: const WebKeyboardFix(child: AuthGate()),
       onGenerateRoute: (settings) {
-        final uri = Uri.tryParse(settings.name ?? '');
-        if (uri != null && isPokerLedgerDeepLink(uri)) {
+        final routeName = settings.name ?? '';
+        final uri = Uri.tryParse(routeName);
+        final launchUri = uri != null && isPokerLedgerDeepLink(uri)
+            ? uri
+            : (isPokerLedgerDeepLink(Uri.base) ? Uri.base : null);
+        if (launchUri != null) {
           Future<void>.microtask(
-            () => ref.read(pendingDeepLinkProvider.notifier).state = uri,
+            () => ref.read(pendingDeepLinkProvider.notifier).state = launchUri,
           );
         }
         return MaterialPageRoute<void>(

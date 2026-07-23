@@ -64,29 +64,39 @@ class V2Participant {
   final String? profileId;
   final String displayName;
   final bool paidUpfront;
+  final int? chosenBuyInCents;
   final DateTime? acceptedAt;
   final DateTime? removedAt;
+  final DateTime? eliminatedAt;
 
   const V2Participant({
     required this.id,
     required this.profileId,
     required this.displayName,
     required this.paidUpfront,
+    required this.chosenBuyInCents,
     required this.acceptedAt,
     required this.removedAt,
+    required this.eliminatedAt,
   });
+
+  bool get isOut => eliminatedAt != null;
 
   factory V2Participant.fromMap(Map<String, dynamic> map) => V2Participant(
     id: _asInt(map['id'])!,
     profileId: map['profile_id'] as String?,
     displayName: map['display_name_snapshot'] as String? ?? 'Deleted player',
     paidUpfront: map['paid_upfront'] as bool? ?? false,
+    chosenBuyInCents: _asInt(map['chosen_buy_in_cents']),
     acceptedAt: map['accepted_at'] == null
         ? null
         : DateTime.parse(map['accepted_at'] as String),
     removedAt: map['removed_at'] == null
         ? null
         : DateTime.parse(map['removed_at'] as String),
+    eliminatedAt: map['eliminated_at'] == null
+        ? null
+        : DateTime.parse(map['eliminated_at'] as String),
   );
 }
 
@@ -151,6 +161,7 @@ class V2Invitation {
       direction == 'host_invite' && status == 'pending_invitee';
   bool get awaitingHost =>
       direction == 'join_request' && status == 'pending_host';
+  bool get awaitingBuyIn => status == 'accepted_pending_buy_in';
 
   factory V2Invitation.fromMap(Map<String, dynamic> map) {
     final profile = map['profiles'] as Map<String, dynamic>?;
@@ -160,7 +171,7 @@ class V2Invitation {
       profileId: map['profile_id'] as String,
       direction: map['direction'] as String,
       status: map['status'] as String,
-      expiresAt: DateTime.parse(map['expires_at'] as String),
+      expiresAt: _parseExpiresAt(map['expires_at']),
       displayName: profile?['display_name'] as String? ?? 'Poker Ledger player',
       handle: profile?['handle'] as String?,
     );
@@ -199,6 +210,51 @@ class V2SettlementTransfer {
                   ),
                 )
                 .toList(),
+      );
+}
+
+class OpenSettlementTransfer {
+  final int transferId;
+  final int sessionId;
+  final String gameName;
+  final int amountCents;
+  final String status;
+  final String direction;
+  final String counterpartyName;
+  final int fromParticipantId;
+  final int toParticipantId;
+  final int myParticipantId;
+
+  const OpenSettlementTransfer({
+    required this.transferId,
+    required this.sessionId,
+    required this.gameName,
+    required this.amountCents,
+    required this.status,
+    required this.direction,
+    required this.counterpartyName,
+    required this.fromParticipantId,
+    required this.toParticipantId,
+    required this.myParticipantId,
+  });
+
+  bool get isOwe => direction == 'owe';
+  bool get isOwed => direction == 'owed';
+  bool get canMarkPaid => status == 'pending' || status == 'disputed';
+  bool get canConfirmReceived => isOwed && status == 'paid';
+
+  factory OpenSettlementTransfer.fromMap(Map<String, dynamic> map) =>
+      OpenSettlementTransfer(
+        transferId: _asInt(map['transfer_id'])!,
+        sessionId: _asInt(map['session_id'])!,
+        gameName: map['game_name'] as String? ?? 'Poker game',
+        amountCents: _asInt(map['amount_cents']) ?? 0,
+        status: map['status'] as String? ?? 'pending',
+        direction: map['direction'] as String? ?? 'owe',
+        counterpartyName: map['counterparty_name'] as String? ?? 'Player',
+        fromParticipantId: _asInt(map['from_participant_id'])!,
+        toParticipantId: _asInt(map['to_participant_id'])!,
+        myParticipantId: _asInt(map['my_participant_id'])!,
       );
 }
 
@@ -374,4 +430,18 @@ int? _asInt(Object? value) {
   if (value == null) return null;
   if (value is int) return value;
   return int.tryParse(value.toString());
+}
+
+DateTime _parseExpiresAt(Object? value) {
+  if (value == null) {
+    return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  }
+  final text = value.toString().trim().toLowerCase();
+  if (text == 'infinity' || text == '+infinity') {
+    return DateTime.utc(9999, 12, 31);
+  }
+  if (text == '-infinity') {
+    return DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+  }
+  return DateTime.parse(value.toString());
 }

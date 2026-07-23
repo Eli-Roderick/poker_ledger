@@ -1,14 +1,24 @@
+import 'dart:async';
+
 import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../utils/money.dart';
+import '../data/sessions_list_providers.dart';
 import '../data/v2_game_providers.dart';
 import '../domain/v2_game_models.dart';
 import '../domain/settlement_engine.dart';
+import 'game_invitations_sheet.dart';
+import 'v2_invite_sheet.dart';
+
+const _kSilentHostReason = 'Host action';
 
 class V2GameFlowScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -20,33 +30,151 @@ class V2GameFlowScreen extends ConsumerStatefulWidget {
 }
 
 class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
-  int _draftStep = 0;
   bool _showSummary = false;
-  String? _settlementMode;
-  int? _bankerParticipantId;
-  final Set<int> _paidUpfrontParticipantIds = {};
+  bool _summaryUnlocked = false;
+  int? _navStep;
+  String? _lastJoinCode;
   bool _busy = false;
+  int _inflightWrites = 0;
+  Future<void> _writeChain = Future<void>.value();
   String? _operationError;
+  RealtimeChannel? _gameChannel;
+  Timer? _detailInvalidateDebounce;
+  DateTime? _suppressRemoteInvalidateUntil;
 
-  Future<bool> _run(Future<void> Function() action) async {
-    if (_busy) return false;
-    setState(() {
-      _busy = true;
-      _operationError = null;
-    });
-    var succeeded = false;
-    try {
-      await action();
-      ref.invalidate(v2GameDetailProvider(widget.sessionId));
-      succeeded = true;
-    } catch (error) {
-      if (mounted) {
-        setState(() => _operationError = _friendlyError(error));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
+  @override
+  void initState() {
+    super.initState();
+    _subscribeToGameRealtime();
+  }
+
+  @override
+  void dispose() {
+    _detailInvalidateDebounce?.cancel();
+    final channel = _gameChannel;
+    _gameChannel = null;
+    if (channel != null) {
+      Supabase.instance.client.removeChannel(channel);
     }
-    return succeeded;
+    super.dispose();
+  }
+
+  void _scheduleDetailInvalidate({bool force = false}) {
+    if (!force &&
+        _suppressRemoteInvalidateUntil != null &&
+        DateTime.now().isBefore(_suppressRemoteInvalidateUntil!)) {
+      return;
+    }
+    _detailInvalidateDebounce?.cancel();
+    _detailInvalidateDebounce = Timer(const Duration(milliseconds: 200), () {
+      if (!mounted) return;
+      ref.invalidate(v2GameDetailProvider(widget.sessionId));
+    });
+  }
+
+  void _subscribeToGameRealtime() {
+    final client = Supabase.instance.client;
+    final sessionId = widget.sessionId;
+    _gameChannel = client
+        .channel('game-sync-$sessionId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'game_invitations',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'session_id',
+            value: sessionId,
+          ),
+          callback: (_) => _scheduleDetailInvalidate(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'session_players',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'session_id',
+            value: sessionId,
+          ),
+          callback: (_) => _scheduleDetailInvalidate(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'ledger_events',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'session_id',
+            value: sessionId,
+          ),
+          callback: (_) => _scheduleDetailInvalidate(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'sessions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: sessionId,
+          ),
+          callback: (_) => _scheduleDetailInvalidate(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'settlement_transfers',
+          callback: (_) => _scheduleDetailInvalidate(),
+        )
+        .subscribe();
+  }
+
+  Future<void> _refreshDetail() async {
+    ref.invalidate(v2GameDetailProvider(widget.sessionId));
+    await ref.read(v2GameDetailProvider(widget.sessionId).future);
+  }
+
+  Future<bool> _run(Future<void> Function() action) {
+    final completer = Completer<bool>();
+    _writeChain = _writeChain
+        .then((_) async {
+          if (!mounted) {
+            completer.complete(false);
+            return;
+          }
+          setState(() {
+            _inflightWrites += 1;
+            _busy = true;
+            _operationError = null;
+          });
+          try {
+            await action();
+            // Coalesce with realtime: local invalidate now, suppress echo briefly.
+            _suppressRemoteInvalidateUntil = DateTime.now().add(
+              const Duration(milliseconds: 400),
+            );
+            ref.invalidate(v2GameDetailProvider(widget.sessionId));
+            completer.complete(true);
+          } catch (error) {
+            if (kDebugMode) {
+              debugPrint('V2 game op failed: $error');
+            }
+            if (mounted) {
+              setState(() => _operationError = _friendlyError(error));
+            }
+            completer.complete(false);
+          } finally {
+            if (mounted) {
+              setState(() {
+                _inflightWrites = (_inflightWrites - 1).clamp(0, 1000);
+                _busy = _inflightWrites > 0;
+              });
+            }
+          }
+        })
+        .catchError((Object _) {});
+    return completer.future;
   }
 
   @override
@@ -66,19 +194,82 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
         actions: [
           if (appBarDetail != null &&
               appBarDetail.game.canEdit &&
+              (appBarDetail.game.isDraft || appBarDetail.game.isLive) &&
               !appBarDetail.game.isFinalized &&
-              appBarDetail.game.phase != 'cancelled')
-            IconButton(
-              tooltip: 'Cancel game',
-              onPressed: () => _cancelGame(appBarDetail),
-              icon: const Icon(Icons.cancel_outlined),
+              appBarDetail.game.phase != 'cancelled') ...[
+            Builder(
+              builder: (context) {
+                final pendingCount = appBarDetail.invitations
+                    .where((invitation) => invitation.awaitingHost)
+                    .length;
+                return IconButton(
+                  tooltip: 'Join requests',
+                  onPressed: () => _showHostJoinRequests(appBarDetail),
+                  icon: Badge(
+                    isLabelVisible: pendingCount > 0,
+                    label: Text('$pendingCount'),
+                    child: const Icon(Icons.notifications_outlined),
+                  ),
+                );
+              },
             ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: () =>
-                ref.invalidate(v2GameDetailProvider(widget.sessionId)),
-            icon: const Icon(Icons.refresh),
-          ),
+            IconButton(
+              tooltip: 'Invite players',
+              onPressed: () => _openInviteSheet(appBarDetail),
+              icon: const Icon(Icons.share),
+            ),
+          ],
+          if (appBarDetail != null)
+            PopupMenuButton<_AppBarMenuAction>(
+              tooltip: 'More',
+              onSelected: (action) {
+                switch (action) {
+                  case _AppBarMenuAction.refresh:
+                    ref.invalidate(v2GameDetailProvider(widget.sessionId));
+                  case _AppBarMenuAction.inviteByHandle:
+                    _showInviteSearch(appBarDetail);
+                  case _AppBarMenuAction.cancelGame:
+                    _cancelGame(appBarDetail);
+                  case _AppBarMenuAction.leaveGame:
+                    _leaveGame(appBarDetail);
+                }
+              },
+              itemBuilder: (context) {
+                final me = ref.read(v2GameRepositoryProvider).currentUserId;
+                final canLeave =
+                    appBarDetail.game.isDraft &&
+                    !appBarDetail.game.canEdit &&
+                    appBarDetail.participants.any(
+                      (participant) => participant.profileId == me,
+                    );
+                return [
+                  const PopupMenuItem(
+                    value: _AppBarMenuAction.refresh,
+                    child: Text('Refresh'),
+                  ),
+                  if (appBarDetail.game.canEdit &&
+                      (appBarDetail.game.isDraft || appBarDetail.game.isLive) &&
+                      !appBarDetail.game.isFinalized &&
+                      appBarDetail.game.phase != 'cancelled')
+                    const PopupMenuItem(
+                      value: _AppBarMenuAction.inviteByHandle,
+                      child: Text('Invite by handle'),
+                    ),
+                  if (canLeave)
+                    const PopupMenuItem(
+                      value: _AppBarMenuAction.leaveGame,
+                      child: Text('Leave game'),
+                    ),
+                  if (appBarDetail.game.canEdit &&
+                      !appBarDetail.game.isFinalized &&
+                      appBarDetail.game.phase != 'cancelled')
+                    const PopupMenuItem(
+                      value: _AppBarMenuAction.cancelGame,
+                      child: Text('Cancel game'),
+                    ),
+                ];
+              },
+            ),
         ],
       ),
       body: detailAsync.when(
@@ -90,23 +281,21 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
         data: (detail) {
           final repository = ref.read(v2GameRepositoryProvider);
           final isHost = detail.game.canEdit;
-          final visibleStep = detail.game.isDraft
-              ? _draftStep
-              : detail.game.isLive
-              ? (_showSummary ? 3 : 2)
-              : 3;
+          final summaryUnlocked = _summaryUnlockedFor(detail.game);
+          final visibleStep = _visibleStepFor(detail.game, summaryUnlocked);
+          final highestReached = _highestReachedFor(
+            detail.game,
+            summaryUnlocked,
+          );
           return Column(
             children: [
               _GameProgress(
                 currentStep: visibleStep,
+                highestReached: highestReached,
                 game: detail.game,
-                onStepPressed: (step) {
-                  if (detail.game.isDraft && step <= 1) {
-                    setState(() => _draftStep = step);
-                  } else if (detail.game.isLive && step >= 2) {
-                    setState(() => _showSummary = step == 3);
-                  }
-                },
+                summaryUnlocked: summaryUnlocked,
+                onStepPressed: (step) =>
+                    _onProgressStepPressed(detail, step, summaryUnlocked),
               ),
               if (_busy) const LinearProgressIndicator(minHeight: 2),
               if (_operationError != null)
@@ -142,85 +331,62 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
                   0 => _LobbyPage(
                     detail: detail,
                     isHost: isHost,
-                    onInvite: () => _showInviteSearch(detail),
-                    onCreateCode: () => _showJoinCode(detail),
-                    onRespond: (id, accept) =>
-                        _run(() => repository.respondToInvitation(id, accept)),
+                    currentUserId: repository.currentUserId,
+                    showStartBar: detail.game.isDraft,
+                    onRefresh: _refreshDetail,
+                    onInviteByHandle: () => _showInviteSearch(detail),
                     onSetBackup: (participant) => _run(
                       () => repository.setBackupHost(
                         widget.sessionId,
                         participant.profileId!,
                       ),
                     ),
-                    onContinue: detail.participants.length >= 2 && isHost
-                        ? () => setState(() => _draftStep = 1)
-                        : null,
-                  ),
-                  1 => _ModePage(
-                    detail: detail,
-                    isHost: isHost,
-                    settlementMode: _settlementMode,
-                    bankerParticipantId: _bankerParticipantId,
-                    onModeChanged: (mode) => setState(() {
-                      _settlementMode = mode;
-                      if (mode == 'pairwise') {
-                        _bankerParticipantId = null;
-                        _paidUpfrontParticipantIds.clear();
-                      }
-                    }),
-                    onBankerChanged: (id) => setState(() {
-                      _bankerParticipantId = id;
-                      if (id != null) {
-                        _paidUpfrontParticipantIds.remove(id);
-                      }
-                    }),
-                    paidUpfrontParticipantIds: _paidUpfrontParticipantIds,
-                    onPaidUpfrontChanged: (id, paid) => setState(() {
-                      if (paid) {
-                        _paidUpfrontParticipantIds.add(id);
-                      } else {
-                        _paidUpfrontParticipantIds.remove(id);
-                      }
-                    }),
-                    onBack: () => setState(() => _draftStep = 0),
-                    onStart:
-                        isHost &&
-                            (_settlementMode == 'pairwise' ||
-                                _bankerParticipantId != null)
-                        ? () => _run(
-                            () => repository.startGame(
+                    onBuyInSaved: detail.game.isDraft
+                        ? (participant, cents) => _run(
+                            () => repository.setBuyIn(
                               sessionId: widget.sessionId,
-                              settlementMode: _settlementMode!,
-                              bankerParticipantId: _bankerParticipantId,
-                              paidUpfrontParticipantIds:
-                                  _paidUpfrontParticipantIds,
+                              participantId: participant.id,
+                              amountCents: cents,
                             ),
                           )
                         : null,
+                    onStartGame: detail.participants.length >= 2 && isHost
+                        ? () => _run(
+                            () => repository.startGame(
+                              sessionId: widget.sessionId,
+                              settlementMode: 'pairwise',
+                              bankerParticipantId: null,
+                            ),
+                          )
+                        : null,
+                    onLeave: detail.game.isDraft && !isHost
+                        ? () => _leaveGame(detail)
+                        : null,
+                    onRemoveParticipant: isHost && detail.game.isDraft
+                        ? (participant) => _removeParticipant(detail, participant)
+                        : null,
                   ),
-                  2 => _LivePage(
+                  1 => _LivePage(
                     detail: detail,
                     isHost: isHost,
-                    onRebuy: (participant) =>
-                        _recordMoney(participant, cashOut: false),
-                    onReverse: (event) => _reverseEvent(event),
-                    onInvite: () => _showInviteSearch(detail),
-                    onCreateCode: () => _showJoinCode(detail),
-                    onRespond: (id, accept) =>
-                        _run(() => repository.respondToInvitation(id, accept)),
+                    onRefresh: _refreshDetail,
+                    onRebuy: (participant) => _recordRebuy(participant),
+                    onDeleteEvent: (event) => _deleteLedgerEvent(event),
+                    onInvite: () => _openInviteSheet(detail),
                     onReview: () => _reviewGame(detail, isHost),
+                    onRemoveParticipant: isHost && detail.game.isLive
+                        ? (participant) => _removeParticipant(detail, participant)
+                        : null,
+                    onToggleOut: isHost && detail.game.isLive
+                        ? _toggleParticipantOut
+                        : null,
                   ),
                   _ => _SummaryPage(
                     detail: detail,
                     isHost: isHost,
-                    onBackToGame: detail.game.isSettling && isHost
-                        ? _returnToLive
-                        : detail.game.isLive
-                        ? () => setState(() => _showSummary = false)
-                        : null,
-                    onCashOut: isHost && detail.game.isSettling
-                        ? (participant) =>
-                              _recordMoney(participant, cashOut: true)
+                    onRefresh: _refreshDetail,
+                    onCashOutSaved: isHost && detail.game.isSettling
+                        ? _saveCashOut
                         : null,
                     onFinalize:
                         detail.everyPlayerCashedOut &&
@@ -240,6 +406,26 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
                     onCorrect: detail.game.isFinalized && isHost
                         ? () => _correctFinalized(detail)
                         : null,
+                    onRemoveParticipant: isHost && detail.game.isSettling
+                        ? (participant) => _removeParticipant(detail, participant)
+                        : null,
+                    onSettlementPreferencesChanged: isHost &&
+                            !detail.game.isFinalized &&
+                            (detail.game.isLive || detail.game.isSettling)
+                        ? ({
+                            required String settlementMode,
+                            required int? bankerParticipantId,
+                            required Set<int> paidUpfrontParticipantIds,
+                          }) => _run(
+                            () => repository.setSettlementPreferences(
+                              sessionId: widget.sessionId,
+                              settlementMode: settlementMode,
+                              bankerParticipantId: bankerParticipantId,
+                              paidUpfrontParticipantIds:
+                                  paidUpfrontParticipantIds,
+                            ),
+                          )
+                        : null,
                   ),
                 },
               ),
@@ -247,6 +433,107 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
           );
         },
       ),
+    );
+  }
+
+  bool _summaryUnlockedFor(V2Game game) {
+    return _summaryUnlocked ||
+        game.isSettling ||
+        game.isFinalized ||
+        (!game.isDraft && !game.isLive && game.phase != 'cancelled');
+  }
+
+  int _highestReachedFor(V2Game game, bool summaryUnlocked) {
+    if (game.isDraft) return 0;
+    if (game.isFinalized) return 2;
+    return 1;
+  }
+
+  int _visibleStepFor(V2Game game, bool summaryUnlocked) {
+    if (game.isDraft) return 0;
+    final override = _navStep;
+    if (override != null) {
+      if (override == 0) return 0;
+      if (override == 1 && (game.isLive || game.isSettling)) return 1;
+      if (override == 2 && summaryUnlocked) return 2;
+    }
+    if (game.isLive) return _showSummary && summaryUnlocked ? 2 : 1;
+    return 2;
+  }
+
+  Future<void> _onProgressStepPressed(
+    V2GameDetail detail,
+    int step,
+    bool summaryUnlocked,
+  ) async {
+    final game = detail.game;
+    if (game.isDraft) return;
+
+    if (step == 0) {
+      setState(() {
+        _navStep = 0;
+        _showSummary = false;
+      });
+      return;
+    }
+
+    if (step == 1) {
+      if (game.isSettling && game.canEdit) {
+        await _returnToLive();
+        return;
+      }
+      if (game.isLive || game.isSettling) {
+        setState(() {
+          _navStep = 1;
+          _showSummary = false;
+        });
+      }
+      return;
+    }
+
+    if (step == 2 && summaryUnlocked) {
+      setState(() {
+        _navStep = 2;
+        _showSummary = true;
+      });
+    }
+  }
+
+  Future<void> _openInviteSheet(V2GameDetail detail) async {
+    final gameName = detail.game.name?.trim().isNotEmpty == true
+        ? detail.game.name!
+        : 'Poker game';
+    await showV2InviteSheet(
+      context: context,
+      gameName: gameName,
+      initialCode: _lastJoinCode,
+      ensureJoinCode: ({required bool regenerate}) async {
+        final result = await ref
+            .read(v2GameRepositoryProvider)
+            .createJoinCode(widget.sessionId);
+        final code = result['code'] as String?;
+        if (code != null && mounted) {
+          setState(() => _lastJoinCode = code);
+        }
+        return code;
+      },
+    );
+  }
+
+  Future<void> _showHostJoinRequests(V2GameDetail detail) async {
+    final joinRequests = detail.invitations
+        .where((invitation) => invitation.awaitingHost)
+        .toList();
+    await showHostJoinRequestsSheet(
+      context: context,
+      joinRequests: joinRequests,
+      onRespond: (id, accept) async {
+        await _run(
+          () => ref
+              .read(v2GameRepositoryProvider)
+              .respondToInvitation(id, accept),
+        );
+      },
     );
   }
 
@@ -266,147 +553,77 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
     }
   }
 
-  Future<void> _showJoinCode(V2GameDetail detail) async {
+  Future<void> _recordRebuy(V2Participant participant) async {
+    final amount = await showDialog<int>(
+      context: context,
+      builder: (_) =>
+          _MoneyDialog(title: 'Rebuy for ${participant.displayName}'),
+    );
+    if (amount == null) return;
+    await _run(
+      () => ref
+          .read(v2GameRepositoryProvider)
+          .addRebuy(
+            sessionId: widget.sessionId,
+            participantId: participant.id,
+            amountCents: amount,
+          ),
+    );
+  }
+
+  Future<bool> _saveCashOut(V2Participant participant, int amountCents) async {
+    if (amountCents < 0) return false;
+    return _run(
+      () => ref
+          .read(v2GameRepositoryProvider)
+          .setCashOut(
+            sessionId: widget.sessionId,
+            participantId: participant.id,
+            amountCents: amountCents,
+          ),
+    );
+  }
+
+  Future<void> _toggleParticipantOut(V2Participant participant) async {
+    await _run(
+      () => ref
+          .read(v2GameRepositoryProvider)
+          .setParticipantEliminated(
+            sessionId: widget.sessionId,
+            participantId: participant.id,
+            eliminated: !participant.isOut,
+          ),
+    );
+  }
+
+  Future<void> _deleteLedgerEvent(V2LedgerEvent event) async {
+    if (event.type != 'rebuy' && event.type != 'cash_out') return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Generate a new join code?'),
+        title: const Text('Remove this entry?'),
         content: const Text(
-          'Any earlier code for this game will stop working. The new code '
-          'expires in two hours, and you still approve every request.',
+          'This removes the entry from the game before finalization.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Keep current code'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Generate'),
+            child: const Text('Remove'),
           ),
         ],
       ),
     );
     if (confirmed != true) return;
-    await _run(() async {
-      final result = await ref
-          .read(v2GameRepositoryProvider)
-          .createJoinCode(widget.sessionId);
-      if (!mounted) return;
-      final code = result['code'] as String;
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Game join code'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SelectableText(
-                code,
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 6,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Expires in two hours. Players enter this code in Poker Ledger; '
-                'you still approve each request.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await SharePlus.instance.share(
-                  ShareParams(
-                    text:
-                        'Join ${detail.game.name ?? 'my poker game'} in '
-                        'Poker Ledger with code $code.\n'
-                        'io.supabase.pokerledger://join/$code',
-                  ),
-                );
-              },
-              child: const Text('Share'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Future<void> _recordMoney(
-    V2Participant participant, {
-    required bool cashOut,
-  }) async {
-    final amount = await showDialog<int>(
-      context: context,
-      builder: (_) => _MoneyDialog(
-        title: cashOut
-            ? 'Cash out ${participant.displayName}'
-            : 'Rebuy for ${participant.displayName}',
-      ),
-    );
-    if (amount == null) return;
-    final repository = ref.read(v2GameRepositoryProvider);
-    await _run(
-      () => cashOut
-          ? repository.cashOut(
-              sessionId: widget.sessionId,
-              participantId: participant.id,
-              amountCents: amount,
-            )
-          : repository.addRebuy(
-              sessionId: widget.sessionId,
-              participantId: participant.id,
-              amountCents: amount,
-            ),
-    );
-  }
-
-  Future<void> _reverseEvent(V2LedgerEvent event) async {
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Reverse ledger entry?'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Reason',
-            hintText: 'Explain what was entered incorrectly',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final reason = controller.text.trim();
-              if (reason.isNotEmpty) Navigator.pop(dialogContext, reason);
-            },
-            child: const Text('Reverse'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (reason == null) return;
     await _run(
       () => ref
           .read(v2GameRepositoryProvider)
-          .reverseEvent(
+          .deleteLedgerEvent(
             sessionId: widget.sessionId,
-            event: event,
-            reason: reason,
+            eventId: event.id,
           ),
     );
   }
@@ -420,46 +637,28 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
       );
       if (!advanced) return;
     }
-    if (mounted) setState(() => _showSummary = true);
+    if (mounted) {
+      setState(() {
+        _summaryUnlocked = true;
+        _showSummary = true;
+        _navStep = 2;
+      });
+    }
   }
 
   Future<void> _returnToLive() async {
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Return to the live ledger?'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Reason',
-            hintText: 'Example: missed rebuy',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-            },
-            child: const Text('Return to live'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (reason == null) return;
     final returned = await _run(
       () => ref
           .read(v2GameRepositoryProvider)
-          .returnToLive(widget.sessionId, reason),
+          .returnToLive(widget.sessionId, _kSilentHostReason),
     );
-    if (returned && mounted) setState(() => _showSummary = false);
+    if (returned && mounted) {
+      setState(() {
+        _summaryUnlocked = true;
+        _showSummary = false;
+        _navStep = 1;
+      });
+    }
   }
 
   Future<void> _confirmFinalize(V2GameDetail detail) async {
@@ -713,67 +912,147 @@ class _V2GameFlowScreenState extends ConsumerState<V2GameFlowScreen> {
   }
 
   Future<void> _cancelGame(V2GameDetail detail) async {
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Cancel this game?'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Cancellation reason'),
+        content: const Text(
+          'This cancels the game for everyone. This cannot be undone.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Keep game'),
           ),
           FilledButton(
-            onPressed: () {
-              final value = controller.text.trim();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Cancel game'),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (reason == null) return;
+    if (confirmed != true) return;
     await _run(
-      () =>
-          ref.read(v2GameRepositoryProvider).cancelGame(detail.game.id, reason),
+      () => ref
+          .read(v2GameRepositoryProvider)
+          .cancelGame(detail.game.id, _kSilentHostReason),
+    );
+  }
+
+  Future<void> _leaveGame(V2GameDetail detail) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Leave this game?'),
+        content: const Text('You will be removed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Stay'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = await _run(
+      () => ref.read(v2GameRepositoryProvider).leaveGame(detail.game.id),
+    );
+    if (!ok || !mounted) return;
+    ref.read(sessionsListProvider.notifier).refresh();
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _removeParticipant(
+    V2GameDetail detail,
+    V2Participant participant,
+  ) async {
+    if (participant.profileId != null &&
+        participant.profileId == detail.game.currentHostId) {
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Remove player?'),
+        content: Text(
+          'Remove ${participant.displayName} and delete all of their data '
+          'from this game?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _run(
+      () => ref
+          .read(v2GameRepositoryProvider)
+          .removeParticipant(
+            sessionId: detail.game.id,
+            participantId: participant.id,
+          ),
     );
   }
 }
 
+enum _AppBarMenuAction { refresh, inviteByHandle, cancelGame, leaveGame }
+
+bool _canKickParticipant(V2GameDetail detail, V2Participant participant) {
+  if (detail.game.isFinalized || detail.game.phase == 'cancelled') {
+    return false;
+  }
+  if (participant.profileId != null &&
+      participant.profileId == detail.game.currentHostId) {
+    return false;
+  }
+  return true;
+}
+
 class _GameProgress extends StatelessWidget {
   final int currentStep;
+  final int highestReached;
   final V2Game game;
+  final bool summaryUnlocked;
   final ValueChanged<int> onStepPressed;
 
   const _GameProgress({
     required this.currentStep,
+    required this.highestReached,
     required this.game,
+    required this.summaryUnlocked,
     required this.onStepPressed,
   });
 
+  bool _canOpen(int index) {
+    if (game.isDraft) return index == 0;
+    if (index == 0) return true;
+    if (index == 1) return game.isLive || game.isSettling || game.isFinalized;
+    return summaryUnlocked;
+  }
+
   @override
   Widget build(BuildContext context) {
-    const labels = ['Lobby', 'Mode', 'Live', 'Summary'];
+    const labels = ['Lobby', 'Live', 'Summary'];
     return Semantics(
       label: 'Game progress: ${labels[currentStep]}',
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
         child: Row(
           children: List.generate(labels.length, (index) {
-            final complete = index < currentStep;
             final active = index == currentStep;
-            final canOpen = game.isDraft
-                ? index <= 1
-                : game.isLive
-                ? index >= 2
-                : index == 3;
+            final complete = index <= highestReached && !active;
+            final canOpen = _canOpen(index);
             return Expanded(
               child: InkWell(
                 onTap: canOpen ? () => onStepPressed(index) : null,
@@ -815,291 +1094,327 @@ class _GameProgress extends StatelessWidget {
   }
 }
 
-class _LobbyPage extends StatelessWidget {
+typedef _BuyInSaved =
+    Future<bool> Function(V2Participant participant, int amountCents);
+
+class _LobbyPage extends StatefulWidget {
   final V2GameDetail detail;
   final bool isHost;
-  final VoidCallback onInvite;
-  final VoidCallback onCreateCode;
-  final void Function(String id, bool accept) onRespond;
+  final String currentUserId;
+  final bool showStartBar;
+  final Future<void> Function() onRefresh;
+  final VoidCallback onInviteByHandle;
   final ValueChanged<V2Participant> onSetBackup;
-  final VoidCallback? onContinue;
+  final _BuyInSaved? onBuyInSaved;
+  final VoidCallback? onStartGame;
+  final VoidCallback? onLeave;
+  final ValueChanged<V2Participant>? onRemoveParticipant;
 
   const _LobbyPage({
     required this.detail,
     required this.isHost,
-    required this.onInvite,
-    required this.onCreateCode,
-    required this.onRespond,
+    required this.currentUserId,
+    required this.showStartBar,
+    required this.onRefresh,
+    required this.onInviteByHandle,
     required this.onSetBackup,
-    required this.onContinue,
+    required this.onBuyInSaved,
+    required this.onStartGame,
+    required this.onLeave,
+    required this.onRemoveParticipant,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final joinRequests = detail.invitations.where(
-      (invitation) => invitation.awaitingHost,
+  State<_LobbyPage> createState() => _LobbyPageState();
+}
+
+class _LobbyPageState extends State<_LobbyPage> {
+  final Map<int, TextEditingController> _buyInControllers = {};
+  final Map<int, Timer> _buyInDebouncers = {};
+  final Map<int, int?> _lastSavedBuyInCents = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _syncBuyInControllers(widget.detail);
+  }
+
+  @override
+  void didUpdateWidget(covariant _LobbyPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncBuyInControllers(widget.detail);
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _buyInDebouncers.values) {
+      timer.cancel();
+    }
+    for (final controller in _buyInControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  int _displayBuyInCents(V2Participant participant) {
+    return participant.chosenBuyInCents ??
+        widget.detail.game.defaultBuyInCents;
+  }
+
+  void _syncBuyInControllers(V2GameDetail detail) {
+    final ids = detail.participants.map((p) => p.id).toSet();
+    for (final id in _buyInControllers.keys.toList()) {
+      if (!ids.contains(id)) {
+        _buyInDebouncers.remove(id)?.cancel();
+        _buyInControllers.remove(id)?.dispose();
+        _lastSavedBuyInCents.remove(id);
+      }
+    }
+    for (final participant in detail.participants) {
+      final cents = _displayBuyInCents(participant);
+      final controller = _buyInControllers.putIfAbsent(
+        participant.id,
+        () => TextEditingController(
+          text: cents <= 0 ? '' : (cents / 100).toStringAsFixed(2),
+        ),
+      );
+      final previousSaved = _lastSavedBuyInCents[participant.id];
+      final serverCents = participant.chosenBuyInCents;
+      if (serverCents != previousSaved) {
+        final parsed = Money.tryParseCents(controller.text);
+        final dirty =
+            parsed != previousSaved &&
+            !(controller.text.trim().isEmpty && previousSaved == null);
+        if (!dirty) {
+          final nextText = cents <= 0
+              ? ''
+              : (cents / 100).toStringAsFixed(2);
+          if (controller.text != nextText) {
+            controller.text = nextText;
+          }
+        }
+        _lastSavedBuyInCents[participant.id] = serverCents;
+      }
+    }
+  }
+
+  void _scheduleBuyInSave(V2Participant participant, String raw) {
+    final onSave = widget.onBuyInSaved;
+    if (onSave == null) return;
+    _buyInDebouncers[participant.id]?.cancel();
+    _buyInDebouncers[participant.id] = Timer(
+      const Duration(milliseconds: 400),
+      () async {
+        final text = raw.trim();
+        if (text.isEmpty) return;
+        final cents = Money.tryParseCents(text);
+        if (cents == null || cents <= 0) return;
+        if (_lastSavedBuyInCents[participant.id] == cents) return;
+        final saved = await onSave(participant, cents);
+        if (mounted && saved) {
+          _lastSavedBuyInCents[participant.id] = cents;
+        }
+      },
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = widget.detail;
+    final isHost = widget.isHost;
+    final showStartBar = widget.showStartBar;
+    final onLeave = widget.onLeave;
+    final onRemoveParticipant = widget.onRemoveParticipant;
     final sentInvitations = detail.invitations.where(
       (invitation) => invitation.status == 'pending_invitee',
     );
-    final remaining = (2 - detail.participants.length).clamp(0, 2);
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text('Game lobby', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text(
-          isHost
-              ? 'Invite account-backed players. Everyone explicitly accepts '
-                    'before they are added.'
-              : 'Waiting for the host to start the game.',
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Accepted players (${detail.participants.length})',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        ...detail.participants.map(
-          (participant) => Card(
-            child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(participant.displayName),
-              subtitle: Text(
-                participant.profileId == detail.game.backupHostId
-                    ? 'Accepted · Backup host'
-                    : 'Accepted',
-              ),
-              trailing:
-                  isHost &&
-                      participant.profileId != null &&
-                      participant.profileId != detail.game.currentHostId
-                  ? IconButton(
-                      tooltip: 'Assign backup host',
-                      onPressed: () => onSetBackup(participant),
-                      icon: Icon(
-                        participant.profileId == detail.game.backupHostId
-                            ? Icons.verified_user
-                            : Icons.person_add_alt_1,
-                      ),
-                    )
-                  : const Icon(Icons.check_circle, color: Colors.green),
-            ),
-          ),
-        ),
-        if (joinRequests.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text('Join requests', style: Theme.of(context).textTheme.titleMedium),
-          ...joinRequests.map(
-            (invitation) => Card(
-              child: ListTile(
-                title: Text(invitation.displayName),
-                subtitle: Text(
-                  invitation.handle == null
-                      ? 'Requested to join'
-                      : '@${invitation.handle}',
-                ),
-                trailing: Wrap(
-                  children: [
-                    IconButton(
-                      tooltip: 'Decline',
-                      onPressed: () => onRespond(invitation.id, false),
-                      icon: const Icon(Icons.close),
-                    ),
-                    IconButton(
-                      tooltip: 'Accept',
-                      onPressed: () => onRespond(invitation.id, true),
-                      icon: const Icon(Icons.check),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-        if (sentInvitations.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text(
-            'Waiting for a response',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          ...sentInvitations.map(
-            (invitation) => ListTile(
-              leading: const Icon(Icons.schedule_send),
-              title: Text(invitation.displayName),
-              subtitle: Text(
-                invitation.handle == null
-                    ? 'Invitation pending'
-                    : '@${invitation.handle}',
-              ),
-            ),
-          ),
-        ],
-        if (isHost) ...[
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onInvite,
-                  icon: const Icon(Icons.person_search),
-                  label: const Text('Invite by handle'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onCreateCode,
-                  icon: const Icon(Icons.password),
-                  label: const Text('Generate code'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          FilledButton(
-            onPressed: onContinue,
-            child: Text(
-              onContinue == null
-                  ? 'Add $remaining more player${remaining == 1 ? '' : 's'}'
-                  : 'Choose settlement mode',
-            ),
-          ),
-        ],
-      ],
+    final awaitingBuyIn = detail.invitations.where(
+      (invitation) => invitation.awaitingBuyIn,
     );
-  }
-}
+    final remaining = (2 - detail.participants.length).clamp(0, 2);
+    final showLeaveBar = onLeave != null && !isHost;
+    final bottomBarHeight = (showStartBar && isHost) || showLeaveBar
+        ? 88.0
+        : 0.0;
+    final theme = Theme.of(context);
+    final canEditBuyIns = widget.onBuyInSaved != null && detail.game.isDraft;
 
-class _ModePage extends StatelessWidget {
-  final V2GameDetail detail;
-  final bool isHost;
-  final String? settlementMode;
-  final int? bankerParticipantId;
-  final ValueChanged<String> onModeChanged;
-  final ValueChanged<int?> onBankerChanged;
-  final Set<int> paidUpfrontParticipantIds;
-  final void Function(int id, bool paid) onPaidUpfrontChanged;
-  final VoidCallback onBack;
-  final VoidCallback? onStart;
-
-  const _ModePage({
-    required this.detail,
-    required this.isHost,
-    required this.settlementMode,
-    required this.bankerParticipantId,
-    required this.onModeChanged,
-    required this.onBankerChanged,
-    required this.paidUpfrontParticipantIds,
-    required this.onPaidUpfrontChanged,
-    required this.onBack,
-    required this.onStart,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Stack(
       children: [
-        Text(
-          'How will players settle?',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'This checkpoint must be completed before any buy-in is recorded.',
-        ),
-        const SizedBox(height: 20),
-        RadioGroup<String>(
-          groupValue: settlementMode,
-          onChanged: (value) {
-            if (isHost && value != null) onModeChanged(value);
-          },
-          child: const Column(
+        RefreshIndicator(
+          onRefresh: widget.onRefresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomBarHeight),
             children: [
-              RadioListTile(
-                value: 'pairwise',
-                title: Text('Pairwise'),
-                subtitle: Text(
-                  'Create a small set of direct payments between players.',
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Accepted players (${detail.participants.length})',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                  ),
+                  if (isHost && showStartBar)
+                    IconButton(
+                      tooltip: 'Invite by handle',
+                      onPressed: widget.onInviteByHandle,
+                      icon: const Icon(Icons.person_search),
+                    ),
+                ],
               ),
-              RadioListTile(
-                value: 'banker',
-                title: Text('Banker'),
-                subtitle: Text(
-                  'Every payment goes through one selected player.',
+              const SizedBox(height: 8),
+              ...detail.participants.map((participant) {
+                final canEditThis =
+                    canEditBuyIns &&
+                    (isHost || participant.profileId == widget.currentUserId);
+                final controller = _buyInControllers[participant.id]!;
+                final buyInCents = _displayBuyInCents(participant);
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        const CircleAvatar(child: Icon(Icons.person)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                participant.displayName,
+                                style: theme.textTheme.titleSmall,
+                              ),
+                              Text(
+                                participant.profileId ==
+                                        detail.game.backupHostId
+                                    ? 'Accepted · Backup host'
+                                    : 'Accepted',
+                              ),
+                              if (!detail.game.isDraft)
+                                Text(
+                                  'Buy-in ${Money.formatCents(buyInCents, symbol: '\$')}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                            ],
+                          ),
+                        ),
+                        if (isHost &&
+                            showStartBar &&
+                            participant.profileId != null &&
+                            participant.profileId !=
+                                detail.game.currentHostId)
+                          IconButton(
+                            tooltip: 'Assign backup host',
+                            onPressed: () => widget.onSetBackup(participant),
+                            icon: Icon(
+                              participant.profileId ==
+                                      detail.game.backupHostId
+                                  ? Icons.verified_user
+                                  : Icons.person_add_alt_1,
+                            ),
+                          ),
+                        if (onRemoveParticipant != null &&
+                            _canKickParticipant(detail, participant))
+                          IconButton(
+                            tooltip: 'Remove player',
+                            onPressed: () => onRemoveParticipant(participant),
+                            icon: const Icon(Icons.person_remove_outlined),
+                          ),
+                        if (detail.game.isDraft) ...[
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 120,
+                            child: TextField(
+                              controller: controller,
+                              readOnly: !canEditThis,
+                              decoration: const InputDecoration(
+                                labelText: 'Buy-in',
+                                isDense: true,
+                                border: OutlineInputBorder(),
+                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
+                              onChanged: canEditThis
+                                  ? (raw) =>
+                                        _scheduleBuyInSave(participant, raw)
+                                  : null,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d+(\.\d{0,2})?$'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              if (awaitingBuyIn.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Waiting for buy-in (${awaitingBuyIn.length})',
+                  style: theme.textTheme.titleMedium,
                 ),
-              ),
+                ...awaitingBuyIn.map(
+                  (invitation) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.payments_outlined),
+                    title: Text(invitation.displayName),
+                    subtitle: Text(
+                      invitation.handle == null
+                          ? 'Approved · choosing buy-in'
+                          : '@${invitation.handle} · choosing buy-in',
+                    ),
+                  ),
+                ),
+              ],
+              if (sentInvitations.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Waiting for a response',
+                  style: theme.textTheme.titleMedium,
+                ),
+                ...sentInvitations.map(
+                  (invitation) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.schedule_send),
+                    title: Text(invitation.displayName),
+                    subtitle: Text(
+                      invitation.handle == null
+                          ? 'Invitation pending'
+                          : '@${invitation.handle}',
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
-        if (settlementMode == 'banker') ...[
-          const SizedBox(height: 12),
-          DropdownButtonFormField<int>(
-            initialValue: bankerParticipantId,
-            decoration: const InputDecoration(
-              labelText: 'Banker',
-              border: OutlineInputBorder(),
-            ),
-            items: detail.participants
-                .map(
-                  (participant) => DropdownMenuItem(
-                    value: participant.id,
-                    child: Text(participant.displayName),
-                  ),
-                )
-                .toList(),
-            onChanged: isHost ? onBankerChanged : null,
-          ),
-          if (bankerParticipantId != null) ...[
-            const SizedBox(height: 20),
-            Text(
-              'Already paid the banker',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const Text(
-              'Mark only payments already completed before the game starts.',
-            ),
-            ...detail.participants
-                .where((participant) => participant.id != bankerParticipantId)
-                .map(
-                  (participant) => CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: paidUpfrontParticipantIds.contains(participant.id),
-                    onChanged: isHost
-                        ? (value) => onPaidUpfrontChanged(
-                            participant.id,
-                            value ?? false,
-                          )
-                        : null,
-                    title: Text(participant.displayName),
-                  ),
-                ),
-          ],
-        ],
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            OutlinedButton(onPressed: onBack, child: const Text('Back')),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: onStart,
-                icon: const Icon(Icons.play_arrow),
-                label: Text(
-                  onStart == null
-                      ? settlementMode == null && isHost
-                            ? 'Choose a settlement mode'
-                            : settlementMode == 'banker'
-                            ? 'Choose a banker'
-                            : 'Waiting for host'
-                      : 'Start live game',
-                ),
+        if (showStartBar && isHost)
+          _StickyActionBar(
+            child: FilledButton(
+              onPressed: widget.onStartGame,
+              child: Text(
+                widget.onStartGame == null
+                    ? 'Add $remaining more player'
+                          '${remaining == 1 ? '' : 's'}'
+                    : 'Move to live',
               ),
             ),
-          ],
-        ),
+          )
+        else if (showLeaveBar)
+          _StickyActionBar(
+            child: OutlinedButton(
+              onPressed: onLeave,
+              child: const Text('Leave game'),
+            ),
+          ),
       ],
     );
   }
@@ -1108,198 +1423,234 @@ class _ModePage extends StatelessWidget {
 class _LivePage extends StatelessWidget {
   final V2GameDetail detail;
   final bool isHost;
+  final Future<void> Function() onRefresh;
   final ValueChanged<V2Participant> onRebuy;
-  final ValueChanged<V2LedgerEvent> onReverse;
+  final ValueChanged<V2LedgerEvent> onDeleteEvent;
   final VoidCallback onInvite;
-  final VoidCallback onCreateCode;
-  final void Function(String id, bool accept) onRespond;
   final VoidCallback onReview;
+  final ValueChanged<V2Participant>? onRemoveParticipant;
+  final ValueChanged<V2Participant>? onToggleOut;
 
   const _LivePage({
     required this.detail,
     required this.isHost,
+    required this.onRefresh,
     required this.onRebuy,
-    required this.onReverse,
+    required this.onDeleteEvent,
     required this.onInvite,
-    required this.onCreateCode,
-    required this.onRespond,
     required this.onReview,
+    required this.onRemoveParticipant,
+    required this.onToggleOut,
   });
 
   @override
   Widget build(BuildContext context) {
-    final joinRequests = detail.invitations.where(
-      (invitation) => invitation.awaitingHost,
-    );
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    final showEndBar = detail.game.isLive || !isHost;
+    final bottomBarHeight = showEndBar ? 88.0 : 0.0;
+    final canRecordRebuys = isHost && detail.game.isLive;
+    final theme = Theme.of(context);
+    return Stack(
       children: [
-        Text('Live game', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text(
-          isHost
-              ? 'Record rebuys as they happen. End the game to enter cash-outs.'
-              : 'The host is recording this game. Pull to refresh for updates.',
-        ),
-        const SizedBox(height: 16),
-        if (isHost) ...[
-          Row(
+        RefreshIndicator(
+          onRefresh: onRefresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomBarHeight),
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onInvite,
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('Invite player'),
+              if (canRecordRebuys) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: onInvite,
+                    icon: const Icon(Icons.share),
+                    label: const Text('Invite'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: onCreateCode,
-                  icon: const Icon(Icons.password),
-                  label: const Text('Generate code'),
+                const SizedBox(height: 8),
+              ],
+              ...detail.participants.map((participant) {
+                final totals = detail.totalsFor(participant.id);
+                final activeCashOut = detail.events.any(
+                  (event) =>
+                      event.participantId == participant.id &&
+                      event.type == 'cash_out' &&
+                      !detail.events.any(
+                        (other) => other.reversesEventId == event.id,
+                      ),
+                );
+                final canKick =
+                    onRemoveParticipant != null &&
+                    _canKickParticipant(detail, participant);
+                final showHostActions =
+                    canRecordRebuys || onToggleOut != null || canKick;
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      participant.displayName,
+                                      style: theme.textTheme.titleSmall,
+                                    ),
+                                  ),
+                                  if (participant.isOut)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 6),
+                                      child: Chip(
+                                        visualDensity: VisualDensity.compact,
+                                        materialTapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        label: const Text('Out'),
+                                        avatar: Icon(
+                                          Icons.block,
+                                          size: 14,
+                                          color: theme.colorScheme.error,
+                                        ),
+                                        labelStyle: theme.textTheme.labelSmall
+                                            ?.copyWith(
+                                              color: theme.colorScheme.error,
+                                            ),
+                                        side: BorderSide(
+                                          color: theme.colorScheme.error
+                                              .withValues(alpha: 0.4),
+                                        ),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    )
+                                  else if (activeCashOut)
+                                    const Padding(
+                                      padding: EdgeInsets.only(left: 6),
+                                      child: Chip(
+                                        visualDensity: VisualDensity.compact,
+                                        materialTapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        avatar: Icon(Icons.check, size: 14),
+                                        label: Text('Cashed out'),
+                                        padding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Buy-ins ${Money.formatCents(totals.buyInsCents, symbol: '\$')}'
+                                '${activeCashOut ? '  •  Cash-out ${Money.formatCents(totals.cashOutCents, symbol: '\$')}' : ''}',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (showHostActions) ...[
+                          const SizedBox(width: 4),
+                          if (canRecordRebuys)
+                            TextButton(
+                              onPressed:
+                                  activeCashOut || participant.isOut
+                                  ? null
+                                  : () => onRebuy(participant),
+                              child: const Text('Rebuy'),
+                            ),
+                          if (onToggleOut != null)
+                            TextButton(
+                              onPressed: () => onToggleOut!(participant),
+                              child: Text(participant.isOut ? 'Undo out' : 'Out'),
+                            ),
+                          if (canKick)
+                            IconButton(
+                              tooltip: 'Remove player',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () =>
+                                  onRemoveParticipant!(participant),
+                              icon: const Icon(Icons.person_remove_outlined),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }),
+              if (isHost && detail.events.isNotEmpty)
+                ExpansionTile(
+                  title: const Text('Ledger history'),
+                  subtitle: Text(
+                    detail.game.isFinalized
+                        ? 'Finalized history is locked.'
+                        : 'Remove mistaken rebuys or cash-outs before finalizing.',
+                  ),
+                  children: detail.events.reversed.map((event) {
+                    final participant = detail.participants.firstWhere(
+                      (item) => item.id == event.participantId,
+                    );
+                    final canDelete =
+                        !detail.game.isFinalized &&
+                        (event.type == 'rebuy' || event.type == 'cash_out') &&
+                        (detail.game.isLive || detail.game.isSettling);
+                    return ListTile(
+                      title: Text(
+                        '${participant.displayName} • ${_eventLabel(event.type)}',
+                      ),
+                      subtitle: Text(
+                        '${event.actorSnapshot ?? 'System'} · '
+                        '${event.createdAt.toLocal()}'
+                        '${event.reason == null ? '' : '\n${event.reason}'}',
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            Money.formatCents(event.amountCents, symbol: '\$'),
+                          ),
+                          if (canDelete)
+                            IconButton(
+                              tooltip: 'Remove',
+                              onPressed: () => onDeleteEvent(event),
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
-              ),
             ],
           ),
-          if (joinRequests.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              'Join requests',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            ...joinRequests.map(
-              (invitation) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(invitation.displayName),
-                subtitle: invitation.handle == null
-                    ? const Text('Requested to join')
-                    : Text('@${invitation.handle}'),
-                trailing: Wrap(
-                  children: [
-                    IconButton(
-                      tooltip: 'Decline',
-                      onPressed: () => onRespond(invitation.id, false),
-                      icon: const Icon(Icons.close),
-                    ),
-                    IconButton(
-                      tooltip: 'Accept',
-                      onPressed: () => onRespond(invitation.id, true),
-                      icon: const Icon(Icons.check),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-        ],
-        ...detail.participants.map((participant) {
-          final totals = detail.totalsFor(participant.id);
-          final activeCashOut = detail.events.any(
-            (event) =>
-                event.participantId == participant.id &&
-                event.type == 'cash_out' &&
-                !detail.events.any(
-                  (other) => other.reversesEventId == event.id,
-                ),
-          );
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          participant.displayName,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      if (activeCashOut)
-                        const Chip(
-                          avatar: Icon(Icons.check, size: 16),
-                          label: Text('Cashed out'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Buy-ins ${Money.formatCents(totals.buyInsCents, symbol: '\$')}'
-                    '${activeCashOut ? '  •  Cash-out ${Money.formatCents(totals.cashOutCents, symbol: '\$')}' : ''}',
-                  ),
-                  if (isHost) ...[
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: activeCashOut
-                          ? null
-                          : () => onRebuy(participant),
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add rebuy'),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        }),
-        if (isHost && detail.events.isNotEmpty)
-          ExpansionTile(
-            title: const Text('Ledger history'),
-            subtitle: const Text(
-              'Incorrect entries are reversed, never erased.',
-            ),
-            children: detail.events.reversed.map((event) {
-              final participant = detail.participants.firstWhere(
-                (item) => item.id == event.participantId,
-              );
-              final alreadyReversed = detail.events.any(
-                (other) => other.reversesEventId == event.id,
-              );
-              return ListTile(
-                title: Text(
-                  '${participant.displayName} • ${_eventLabel(event.type)}',
-                ),
-                subtitle: Text(
-                  '${event.actorSnapshot ?? 'System'} · '
-                  '${event.createdAt.toLocal()}'
-                  '${event.reason == null ? '' : '\n${event.reason}'}',
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(Money.formatCents(event.amountCents, symbol: '\$')),
-                    IconButton(
-                      tooltip: alreadyReversed ? 'Already reversed' : 'Reverse',
-                      onPressed: alreadyReversed
-                          ? null
-                          : () => onReverse(event),
-                      icon: const Icon(Icons.undo),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        const SizedBox(height: 20),
-        FilledButton(
-          onPressed: onReview,
-          child: Text(
-            isHost ? 'End game & enter cash-outs' : 'Review progress',
-          ),
         ),
+        if (showEndBar)
+          _StickyActionBar(
+            child: FilledButton(
+              onPressed: onReview,
+              child: Text(
+                isHost ? 'End game & enter cash-outs' : 'Review progress',
+              ),
+            ),
+          ),
       ],
     );
   }
 }
 
-class _SummaryPage extends StatelessWidget {
+typedef _SettlementPreferencesChanged =
+    Future<void> Function({
+      required String settlementMode,
+      required int? bankerParticipantId,
+      required Set<int> paidUpfrontParticipantIds,
+    });
+
+typedef _CashOutSaved =
+    Future<bool> Function(V2Participant participant, int amountCents);
+
+class _SummaryPage extends StatefulWidget {
   final V2GameDetail detail;
   final bool isHost;
-  final VoidCallback? onBackToGame;
-  final ValueChanged<V2Participant>? onCashOut;
+  final Future<void> Function() onRefresh;
+  final _CashOutSaved? onCashOutSaved;
   final VoidCallback? onFinalize;
   final VoidCallback onShare;
   final VoidCallback onExport;
@@ -1308,12 +1659,14 @@ class _SummaryPage extends StatelessWidget {
   final void Function(V2SettlementTransfer transfer, String status)
   onTransferStatus;
   final VoidCallback? onCorrect;
+  final ValueChanged<V2Participant>? onRemoveParticipant;
+  final _SettlementPreferencesChanged? onSettlementPreferencesChanged;
 
   const _SummaryPage({
     required this.detail,
     required this.isHost,
-    required this.onBackToGame,
-    required this.onCashOut,
+    required this.onRefresh,
+    required this.onCashOutSaved,
     required this.onFinalize,
     required this.onShare,
     required this.onExport,
@@ -1321,10 +1674,189 @@ class _SummaryPage extends StatelessWidget {
     required this.currentUserId,
     required this.onTransferStatus,
     required this.onCorrect,
+    required this.onRemoveParticipant,
+    required this.onSettlementPreferencesChanged,
   });
 
   @override
+  State<_SummaryPage> createState() => _SummaryPageState();
+}
+
+class _SummaryPageState extends State<_SummaryPage> {
+  late String _settlementMode;
+  int? _bankerParticipantId;
+  late Set<int> _paidUpfrontParticipantIds;
+  final Map<int, TextEditingController> _cashOutControllers = {};
+  final Map<int, Timer> _cashOutDebouncers = {};
+  final Map<int, int?> _lastSavedCashOutCents = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _syncFromDetail(widget.detail);
+    _syncCashOutControllers(widget.detail);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SummaryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.detail.game.settlementMode !=
+            widget.detail.game.settlementMode ||
+        oldWidget.detail.game.bankerParticipantId !=
+            widget.detail.game.bankerParticipantId ||
+        !_samePaidUpfront(oldWidget.detail, widget.detail)) {
+      _syncFromDetail(widget.detail);
+    }
+    _syncCashOutControllers(widget.detail);
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _cashOutDebouncers.values) {
+      timer.cancel();
+    }
+    for (final controller in _cashOutControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  bool _samePaidUpfront(V2GameDetail a, V2GameDetail b) {
+    final aIds = a.participants
+        .where((p) => p.paidUpfront)
+        .map((p) => p.id)
+        .toSet();
+    final bIds = b.participants
+        .where((p) => p.paidUpfront)
+        .map((p) => p.id)
+        .toSet();
+    return aIds.length == bIds.length && aIds.containsAll(bIds);
+  }
+
+  void _syncFromDetail(V2GameDetail detail) {
+    _settlementMode = detail.game.settlementMode;
+    _bankerParticipantId = detail.game.bankerParticipantId;
+    _paidUpfrontParticipantIds = detail.participants
+        .where((participant) => participant.paidUpfront)
+        .map((participant) => participant.id)
+        .toSet();
+  }
+
+  int? _activeCashOutCents(V2GameDetail detail, int participantId) {
+    for (final event in detail.events) {
+      if (event.participantId != participantId || event.type != 'cash_out') {
+        continue;
+      }
+      final reversed = detail.events.any(
+        (other) => other.reversesEventId == event.id,
+      );
+      if (!reversed) return event.amountCents.abs();
+    }
+    return null;
+  }
+
+  void _syncCashOutControllers(V2GameDetail detail) {
+    final ids = detail.participants.map((p) => p.id).toSet();
+    for (final id in _cashOutControllers.keys.toList()) {
+      if (!ids.contains(id)) {
+        _cashOutDebouncers.remove(id)?.cancel();
+        _cashOutControllers.remove(id)?.dispose();
+        _lastSavedCashOutCents.remove(id);
+      }
+    }
+    for (final participant in detail.participants) {
+      final cents = _activeCashOutCents(detail, participant.id) ??
+          (participant.isOut ? 0 : null);
+      final controller = _cashOutControllers.putIfAbsent(
+        participant.id,
+        () => TextEditingController(
+          text: cents == null ? '' : (cents / 100).toStringAsFixed(2),
+        ),
+      );
+      final previousSaved = _lastSavedCashOutCents[participant.id];
+      if (cents != previousSaved) {
+        final parsed = Money.tryParseCents(controller.text);
+        final dirty =
+            parsed != previousSaved &&
+            !(controller.text.trim().isEmpty && previousSaved == null);
+        if (!dirty) {
+          final nextText = cents == null
+              ? ''
+              : (cents / 100).toStringAsFixed(2);
+          if (controller.text != nextText) {
+            controller.text = nextText;
+          }
+        }
+        _lastSavedCashOutCents[participant.id] = cents;
+      }
+    }
+  }
+
+  void _formatCashOutField(TextEditingController controller) {
+    final cents = Money.tryParseCents(controller.text);
+    if (cents == null) return;
+    final formatted = (cents / 100).toStringAsFixed(2);
+    if (controller.text != formatted) {
+      controller.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
+      );
+    }
+  }
+
+  void _scheduleCashOutSave(V2Participant participant, String raw) {
+    final onSave = widget.onCashOutSaved;
+    if (onSave == null) return;
+    _cashOutDebouncers[participant.id]?.cancel();
+    _cashOutDebouncers[participant.id] = Timer(
+      const Duration(milliseconds: 400),
+      () async {
+        final text = raw.trim();
+        if (text.isEmpty) return;
+        final cents = Money.tryParseCents(text);
+        if (cents == null || cents < 0) return;
+        if (_lastSavedCashOutCents[participant.id] == cents) return;
+        final saved = await onSave(participant, cents);
+        if (mounted && saved) {
+          _lastSavedCashOutCents[participant.id] = cents;
+        }
+      },
+    );
+  }
+
+  Future<void> _persistPreferences({
+    required String settlementMode,
+    required int? bankerParticipantId,
+    required Set<int> paidUpfrontParticipantIds,
+  }) async {
+    final callback = widget.onSettlementPreferencesChanged;
+    if (callback == null) return;
+    if (settlementMode == 'banker' && bankerParticipantId == null) return;
+    await callback(
+      settlementMode: settlementMode,
+      bankerParticipantId: bankerParticipantId,
+      paidUpfrontParticipantIds: settlementMode == 'banker'
+          ? paidUpfrontParticipantIds
+          : const {},
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final detail = widget.detail;
+    final isHost = widget.isHost;
+    final canEditCashOuts = widget.onCashOutSaved != null;
+    final onFinalize = widget.onFinalize;
+    final onShare = widget.onShare;
+    final onExport = widget.onExport;
+    final onPdf = widget.onPdf;
+    final currentUserId = widget.currentUserId;
+    final onTransferStatus = widget.onTransferStatus;
+    final onCorrect = widget.onCorrect;
+    final canEditMode = widget.onSettlementPreferencesChanged != null;
+    final showFinalizeBar = !detail.game.isFinalized && isHost;
+    final bottomBarHeight = showFinalizeBar ? 88.0 : 0.0;
+
     final missingCashOuts = detail.participants
         .where(
           (participant) => !detail.events.any(
@@ -1339,252 +1871,464 @@ class _SummaryPage extends StatelessWidget {
         .toList();
     final proposedTransfers =
         missingCashOuts.isEmpty && detail.ledgerBalanceCents == 0
-        ? _previewTransfers(detail)
+        ? _previewTransfers(
+            detail,
+            settlementMode: _settlementMode,
+            bankerParticipantId: _bankerParticipantId,
+            paidUpfrontParticipantIds: _paidUpfrontParticipantIds,
+          )
         : const <SettlementTransfer>[];
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Stack(
       children: [
-        Text(
-          detail.game.isFinalized ? 'Final summary' : 'Review game',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          detail.game.isFinalized
-              ? 'Revision ${detail.game.latestRevisionId ?? ''} is locked and auditable.'
-              : 'Complete each required item before finalizing.',
-        ),
-        const SizedBox(height: 16),
-        ...detail.participants.map((participant) {
-          final totals = detail.totalsFor(participant.id);
-          final needsCashOut = missingCashOuts.contains(participant);
-          return Card(
-            child: Column(
-              children: [
-                ListTile(
-                  title: Text(participant.displayName),
-                  subtitle: Text(
-                    'Buy-ins ${Money.formatCents(totals.buyInsCents, symbol: '\$')} • '
-                    'Cash-out ${needsCashOut ? 'not entered' : Money.formatCents(totals.cashOutCents, symbol: '\$')}',
+        RefreshIndicator(
+          onRefresh: widget.onRefresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + bottomBarHeight),
+            children: [
+              if (canEditMode) ...[
+                Text(
+                  'Settlement mode',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'pairwise', label: Text('Pairwise')),
+                    ButtonSegment(value: 'banker', label: Text('Banker')),
+                  ],
+                  selected: {_settlementMode},
+                  onSelectionChanged: (selection) {
+                    final mode = selection.first;
+                    setState(() {
+                      _settlementMode = mode;
+                      if (mode == 'pairwise') {
+                        _bankerParticipantId = null;
+                        _paidUpfrontParticipantIds.clear();
+                      }
+                    });
+                    _persistPreferences(
+                      settlementMode: mode,
+                      bankerParticipantId: mode == 'banker'
+                          ? _bankerParticipantId
+                          : null,
+                      paidUpfrontParticipantIds: _paidUpfrontParticipantIds,
+                    );
+                  },
+                ),
+                if (_settlementMode == 'banker') ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    key: ValueKey('banker-$_bankerParticipantId'),
+                    initialValue: _bankerParticipantId,
+                    decoration: const InputDecoration(
+                      labelText: 'Banker',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: detail.participants
+                        .map(
+                          (participant) => DropdownMenuItem(
+                            value: participant.id,
+                            child: Text(participant.displayName),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (id) {
+                      setState(() {
+                        _bankerParticipantId = id;
+                        if (id != null) {
+                          _paidUpfrontParticipantIds.remove(id);
+                        }
+                      });
+                      _persistPreferences(
+                        settlementMode: 'banker',
+                        bankerParticipantId: id,
+                        paidUpfrontParticipantIds: _paidUpfrontParticipantIds,
+                      );
+                    },
                   ),
-                  trailing: needsCashOut
-                      ? const Icon(Icons.radio_button_unchecked)
-                      : Text(
-                          Money.formatCents(totals.netCents, symbol: '\$'),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: totals.netCents > 0
-                                ? Colors.green
-                                : totals.netCents < 0
-                                ? Theme.of(context).colorScheme.error
-                                : null,
+                  if (_bankerParticipantId != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Already paid the banker',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const Text(
+                      'Mark payments already completed outside this settlement.',
+                    ),
+                    ...detail.participants
+                        .where(
+                          (participant) =>
+                              participant.id != _bankerParticipantId,
+                        )
+                        .map(
+                          (participant) => CheckboxListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: _paidUpfrontParticipantIds.contains(
+                              participant.id,
+                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                if (value ?? false) {
+                                  _paidUpfrontParticipantIds.add(
+                                    participant.id,
+                                  );
+                                } else {
+                                  _paidUpfrontParticipantIds.remove(
+                                    participant.id,
+                                  );
+                                }
+                              });
+                              _persistPreferences(
+                                settlementMode: 'banker',
+                                bankerParticipantId: _bankerParticipantId,
+                                paidUpfrontParticipantIds:
+                                    _paidUpfrontParticipantIds,
+                              );
+                            },
+                            title: Text(participant.displayName),
                           ),
                         ),
+                  ],
+                ],
+                const SizedBox(height: 16),
+              ] else if (!detail.game.isFinalized) ...[
+                Text(
+                  'Settlement: ${_settlementMode == 'banker' ? 'Banker' : 'Pairwise'}',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
-                if (needsCashOut && onCashOut != null)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                      child: FilledButton.tonalIcon(
-                        onPressed: () => onCashOut!(participant),
-                        icon: const Icon(Icons.logout),
-                        label: const Text('Enter cash-out'),
-                      ),
-                    ),
-                  ),
+                const SizedBox(height: 16),
               ],
-            ),
-          );
-        }),
-        const Divider(),
-        if (!detail.game.isFinalized) ...[
-          _RequirementTile(
-            complete: missingCashOuts.isEmpty,
-            title: missingCashOuts.isEmpty
-                ? 'Every player has a cash-out'
-                : 'Enter ${missingCashOuts.length} remaining cash-out${missingCashOuts.length == 1 ? '' : 's'}',
-          ),
-          _RequirementTile(
-            complete: detail.ledgerBalanceCents == 0,
-            title: detail.ledgerBalanceCents == 0
-                ? 'Buy-ins and cash-outs balance'
-                : 'Ledger is off by ${Money.formatCents(detail.ledgerBalanceCents.abs(), symbol: '\$')}',
-          ),
-        ],
-        if (detail.revisions.isNotEmpty)
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const Text('Revision history'),
-            subtitle: Text(
-              '${detail.revisions.length} locked '
-              'revision${detail.revisions.length == 1 ? '' : 's'}',
-            ),
-            children: detail.revisions.reversed
-                .map(
-                  (revision) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      revision.supersededAt == null
-                          ? Icons.verified_outlined
-                          : Icons.history,
-                    ),
-                    title: Text(
-                      'Revision ${revision.revisionNumber} · '
-                      'through event ${revision.throughEventSequence}',
-                    ),
-                    subtitle: Text(
-                      '${revision.settlementMode} · '
-                      '${revision.createdAt.toLocal()}'
-                      '${revision.reason == null ? '' : '\n${revision.reason}'}',
+              ...detail.participants.map((participant) {
+                final totals = detail.totalsFor(participant.id);
+                final needsCashOut = missingCashOuts.contains(participant);
+                final controller = _cashOutControllers[participant.id]!;
+                final onRemoveParticipant = widget.onRemoveParticipant;
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      participant.displayName,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                  ),
+                                  if (participant.isOut)
+                                    Chip(
+                                      visualDensity: VisualDensity.compact,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      label: const Text('Out'),
+                                      avatar: Icon(
+                                        Icons.block,
+                                        size: 14,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.error,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Buy-ins ${Money.formatCents(totals.buyInsCents, symbol: '\$')} • '
+                                'Cash-out ${needsCashOut ? 'not entered' : Money.formatCents(totals.cashOutCents, symbol: '\$')}',
+                              ),
+                              if (!needsCashOut) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Net ${Money.formatCents(totals.netCents, symbol: '\$')}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: totals.netCents > 0
+                                        ? Colors.green
+                                        : totals.netCents < 0
+                                        ? Theme.of(context).colorScheme.error
+                                        : null,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (onRemoveParticipant != null &&
+                            _canKickParticipant(detail, participant))
+                          IconButton(
+                            tooltip: 'Remove player',
+                            onPressed: () => onRemoveParticipant(participant),
+                            icon: const Icon(Icons.person_remove_outlined),
+                          ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: 128,
+                          child: TextField(
+                            controller: controller,
+                            readOnly: !canEditCashOuts,
+                            decoration: const InputDecoration(
+                              labelText: 'Cash out',
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                            ),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            onChanged: canEditCashOuts
+                                ? (raw) =>
+                                      _scheduleCashOutSave(participant, raw)
+                                : null,
+                            onEditingComplete: () {
+                              _formatCashOutField(controller);
+                              FocusScope.of(context).unfocus();
+                            },
+                            onTapOutside: (_) =>
+                                _formatCashOutField(controller),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'^\d+(\.\d{0,2})?$'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                )
-                .toList(),
-          ),
-        if (!detail.game.isFinalized && proposedTransfers.isNotEmpty) ...[
-          const Divider(),
-          Text(
-            'Proposed transfers',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          ...proposedTransfers.map((transfer) {
-            final from = detail.participants.firstWhere(
-              (item) => item.id == transfer.fromParticipantId,
-            );
-            final to = detail.participants.firstWhere(
-              (item) => item.id == transfer.toParticipantId,
-            );
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('${from.displayName} pays ${to.displayName}'),
-              trailing: Text(
-                Money.formatCents(transfer.amountCents, symbol: '\$'),
-              ),
-            );
-          }),
-        ],
-        if (detail.transfers.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Text('Settlement', style: Theme.of(context).textTheme.titleMedium),
-          ...detail.transfers.map((transfer) {
-            final from = detail.participants.firstWhere(
-              (item) => item.id == transfer.fromParticipantId,
-            );
-            final to = detail.participants.firstWhere(
-              (item) => item.id == transfer.toParticipantId,
-            );
-            final isPayer = from.profileId == currentUserId;
-            final isRecipient = to.profileId == currentUserId;
-            return Card(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.payments_outlined),
+                );
+              }),
+              const Divider(),
+              if (!detail.game.isFinalized) ...[
+                _RequirementTile(
+                  complete: missingCashOuts.isEmpty,
+                  title: missingCashOuts.isEmpty
+                      ? 'Every player has a cash-out'
+                      : 'Enter ${missingCashOuts.length} remaining cash-out${missingCashOuts.length == 1 ? '' : 's'}',
+                ),
+                _RequirementTile(
+                  complete: detail.ledgerBalanceCents == 0,
+                  title: detail.ledgerBalanceCents == 0
+                      ? 'Buy-ins and cash-outs balance'
+                      : 'Ledger is off by ${Money.formatCents(detail.ledgerBalanceCents.abs(), symbol: '\$')}',
+                ),
+              ],
+              if (detail.revisions.isNotEmpty)
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('Revision history'),
+                  subtitle: Text(
+                    '${detail.revisions.length} locked '
+                    'revision${detail.revisions.length == 1 ? '' : 's'}',
+                  ),
+                  children: detail.revisions.reversed
+                      .map(
+                        (revision) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            revision.supersededAt == null
+                                ? Icons.verified_outlined
+                                : Icons.history,
+                          ),
+                          title: Text(
+                            'Revision ${revision.revisionNumber} · '
+                            'through event ${revision.throughEventSequence}',
+                          ),
+                          subtitle: Text(
+                            '${revision.settlementMode} · '
+                            '${revision.createdAt.toLocal()}'
+                            '${revision.reason == null ? '' : '\n${revision.reason}'}',
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              if (!detail.game.isFinalized && proposedTransfers.isNotEmpty) ...[
+                const Divider(),
+                Text(
+                  'Proposed transfers',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                ...proposedTransfers.map((transfer) {
+                  final from = detail.participants.firstWhere(
+                    (item) => item.id == transfer.fromParticipantId,
+                  );
+                  final to = detail.participants.firstWhere(
+                    (item) => item.id == transfer.toParticipantId,
+                  );
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: Text('${from.displayName} pays ${to.displayName}'),
-                    subtitle: Text('Status: ${transfer.status}'),
                     trailing: Text(
                       Money.formatCents(transfer.amountCents, symbol: '\$'),
                     ),
-                  ),
-                  if (transfer.statusHistory.isNotEmpty)
-                    ExpansionTile(
-                      title: const Text('Status history'),
-                      children: transfer.statusHistory
-                          .map(
-                            (change) => ListTile(
-                              dense: true,
-                              title: Text(
-                                '${change.previousStatus} → '
-                                '${change.newStatus}',
-                              ),
-                              subtitle: Text(
-                                '${change.actorSnapshot} · '
-                                '${change.changedAt.toLocal()}',
-                              ),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  if (detail.game.isFinalized &&
-                      transfer.status != 'received' &&
-                      (isPayer || isRecipient))
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                      child: Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 8,
-                        children: [
-                          if (isPayer && transfer.status != 'paid')
-                            TextButton(
-                              onPressed: () =>
-                                  onTransferStatus(transfer, 'paid'),
-                              child: const Text('Mark paid'),
-                            ),
-                          if (isRecipient && transfer.status == 'paid')
-                            FilledButton.tonal(
-                              onPressed: () =>
-                                  onTransferStatus(transfer, 'received'),
-                              child: const Text('Confirm received'),
-                            ),
-                          TextButton(
-                            onPressed: () =>
-                                onTransferStatus(transfer, 'disputed'),
-                            child: const Text('Dispute'),
+                  );
+                }),
+              ],
+              if (detail.transfers.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Settlement',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                ...detail.transfers.map((transfer) {
+                  final from = detail.participants.firstWhere(
+                    (item) => item.id == transfer.fromParticipantId,
+                  );
+                  final to = detail.participants.firstWhere(
+                    (item) => item.id == transfer.toParticipantId,
+                  );
+                  final isPayer = from.profileId == currentUserId;
+                  final isRecipient = to.profileId == currentUserId;
+                  return Card(
+                    child: Column(
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.payments_outlined),
+                          title: Text(
+                            '${from.displayName} pays ${to.displayName}',
                           ),
-                        ],
-                      ),
+                          subtitle: Text('Status: ${transfer.status}'),
+                          trailing: Text(
+                            Money.formatCents(
+                              transfer.amountCents,
+                              symbol: '\$',
+                            ),
+                          ),
+                        ),
+                        if (transfer.statusHistory.isNotEmpty)
+                          ExpansionTile(
+                            title: const Text('Status history'),
+                            children: transfer.statusHistory
+                                .map(
+                                  (change) => ListTile(
+                                    dense: true,
+                                    title: Text(
+                                      '${change.previousStatus} → '
+                                      '${change.newStatus}',
+                                    ),
+                                    subtitle: Text(
+                                      '${change.actorSnapshot} · '
+                                      '${change.changedAt.toLocal()}',
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        if (detail.game.isFinalized &&
+                            transfer.status != 'received' &&
+                            (isPayer || isRecipient))
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                            child: Wrap(
+                              alignment: WrapAlignment.end,
+                              spacing: 8,
+                              children: [
+                                if ((isPayer || isRecipient) &&
+                                    (transfer.status == 'pending' ||
+                                        transfer.status == 'disputed'))
+                                  TextButton(
+                                    onPressed: () =>
+                                        onTransferStatus(transfer, 'paid'),
+                                    child: const Text('Mark paid'),
+                                  ),
+                                if (isRecipient && transfer.status == 'paid')
+                                  FilledButton.tonal(
+                                    onPressed: () => onTransferStatus(
+                                      transfer,
+                                      'received',
+                                    ),
+                                    child: const Text('Confirm received'),
+                                  ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
+                  );
+                }),
+              ],
+              const SizedBox(height: 20),
+              if (detail.game.isFinalized) ...[
+                FilledButton.tonalIcon(
+                  onPressed: onShare,
+                  icon: const Icon(Icons.share),
+                  label: const Text('Share summary'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: onExport,
+                  icon: const Icon(Icons.download_outlined),
+                  label: const Text('Export audit CSV'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: onPdf,
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Export PDF'),
+                ),
+                if (onCorrect != null) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: onCorrect,
+                    icon: const Icon(Icons.history),
+                    label: const Text('Correct finalized game'),
+                  ),
                 ],
+              ],
+            ],
+          ),
+        ),
+        if (showFinalizeBar)
+          _StickyActionBar(
+            child: FilledButton(
+              onPressed: onFinalize,
+              child: Text(
+                onFinalize != null
+                    ? 'Finalize game'
+                    : 'Complete the items above',
               ),
-            );
-          }),
-        ],
-        const SizedBox(height: 20),
-        if (onBackToGame != null)
-          OutlinedButton(
-            onPressed: onBackToGame,
-            child: const Text('Back to live game'),
-          ),
-        if (!detail.game.isFinalized)
-          FilledButton(
-            onPressed: onFinalize,
-            child: Text(
-              onFinalize != null
-                  ? 'Finalize game'
-                  : isHost
-                  ? 'Complete the items above'
-                  : 'Waiting for host',
             ),
           ),
-        if (detail.game.isFinalized) ...[
-          FilledButton.tonalIcon(
-            onPressed: onShare,
-            icon: const Icon(Icons.share),
-            label: const Text('Share summary'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: onExport,
-            icon: const Icon(Icons.download_outlined),
-            label: const Text('Export audit CSV'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: onPdf,
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Export PDF'),
-          ),
-          if (onCorrect != null) ...[
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: onCorrect,
-              icon: const Icon(Icons.history),
-              label: const Text('Correct finalized game'),
-            ),
-          ],
-        ],
       ],
+    );
+  }
+}
+
+class _StickyActionBar extends StatelessWidget {
+  final Widget child;
+
+  const _StickyActionBar({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Material(
+        elevation: 8,
+        color: theme.colorScheme.surface,
+        child: SafeArea(
+          top: false,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: theme.dividerColor)),
+            ),
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2011,10 +2755,22 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-List<SettlementTransfer> _previewTransfers(V2GameDetail detail) {
+List<SettlementTransfer> _previewTransfers(
+  V2GameDetail detail, {
+  String? settlementMode,
+  int? bankerParticipantId,
+  Set<int>? paidUpfrontParticipantIds,
+}) {
+  final mode = settlementMode ?? detail.game.settlementMode;
+  final bankerId = bankerParticipantId ?? detail.game.bankerParticipantId;
+  final paidIds =
+      paidUpfrontParticipantIds ??
+      detail.participants
+          .where((participant) => participant.paidUpfront)
+          .map((participant) => participant.id)
+          .toSet();
   try {
-    if (detail.game.settlementMode == 'banker' &&
-        detail.game.bankerParticipantId != null) {
+    if (mode == 'banker' && bankerId != null) {
       return SettlementEngine.settleBanker(
         participants: detail.participants.map((participant) {
           final totals = detail.totalsFor(participant.id);
@@ -2022,10 +2778,10 @@ List<SettlementTransfer> _previewTransfers(V2GameDetail detail) {
             participantId: participant.id,
             buyInCents: totals.buyInsCents,
             cashOutCents: totals.cashOutCents,
-            paidUpfront: participant.paidUpfront,
+            paidUpfront: paidIds.contains(participant.id),
           );
         }),
-        bankerParticipantId: detail.game.bankerParticipantId!,
+        bankerParticipantId: bankerId,
       ).transfers;
     }
     return SettlementEngine.settlePairwise(
@@ -2052,25 +2808,102 @@ String _eventLabel(String type) => switch (type) {
 };
 
 String _friendlyError(Object error) {
-  final text = error.toString().toLowerCase();
-  if (text.contains('compatible client') || text.contains('upgrade')) {
+  final message = error is PostgrestException
+      ? (error.message)
+      : error.toString();
+  final text = message.toLowerCase();
+  if (text.contains('compatible client') ||
+      text.contains('upgrade') ||
+      text.contains('update poker ledger to continue')) {
     return 'Update Poker Ledger before changing this game.';
+  }
+  if (text.contains('only the current host')) {
+    return 'Only the current host can make this change.';
   }
   if (text.contains('permission') ||
       text.contains('row-level security') ||
       text.contains('42501')) {
     return 'You have read-only access to this game.';
   }
+  if (text.contains('transactional ledger api') ||
+      text.contains('transactional game api')) {
+    return 'This game must be updated through Poker Ledger actions. Retry, '
+        'or refresh and try again.';
+  }
+  if (text.contains('already has a cash-out')) {
+    return 'That cash-out was already saved. Refresh and try again.';
+  }
+  if (text.contains('buy-in must be greater than zero')) {
+    return 'Buy-in must be greater than zero.';
+  }
+  if (text.contains('buy-ins cannot be changed after the game is live') ||
+      text.contains('only be set in the lobby')) {
+    return 'Buy-ins can only be changed in the lobby before the game goes live.';
+  }
+  if (text.contains('cash-out cannot be negative')) {
+    return 'Cash-out cannot be negative.';
+  }
+  if (text.contains('cash-out must be greater than zero') ||
+      text.contains('ledger_events_amount_cents_check') ||
+      (text.contains('amount_cents') && text.contains('check constraint'))) {
+    return 'Enter a valid cash-out amount.';
+  }
+  if (text.contains('only be marked out while')) {
+    return 'Players can only be marked out while the game is live or in summary.';
+  }
+  if (text.contains('reverses_event_id_key') ||
+      text.contains('already reversed') ||
+      text.contains('reversal must exactly offset')) {
+    return 'That entry was already changed. Refresh and try again.';
+  }
+  if (text.contains('not valid in this game phase') ||
+      text.contains('can only be set while settling') ||
+      text.contains('only be removed before finalization')) {
+    return 'This action isn’t available in the current game phase. Refresh '
+        'and try again.';
+  }
+  if (text.contains('matching request is still processing')) {
+    return 'Still saving a previous change. Wait a moment and retry.';
+  }
+  if (text.contains('idempotency key was already used')) {
+    return 'Retry the action — the previous request conflicted.';
+  }
+  if (text.contains('at least two') || text.contains('accepted players')) {
+    return 'Add at least two accepted players before starting the game.';
+  }
+  if (text.contains('only leave while the game is in the lobby') ||
+      text.contains('only leave while')) {
+    return 'You can only leave while the game is in the lobby.';
+  }
+  if (text.contains('host cannot leave')) {
+    return 'The host cannot leave. Cancel the game instead.';
+  }
+  if (text.contains('host cannot be removed')) {
+    return 'The host cannot be removed from the game.';
+  }
+  if (text.contains('cannot be removed after the game is finalized') ||
+      text.contains('cannot be removed in this game phase')) {
+    return 'Players can’t be removed in this game phase.';
+  }
+  if (text.contains('only a draft') || text.contains('draft game can start')) {
+    return 'This game has already started.';
+  }
+  if (text.contains('choose a settlement') ||
+      text.contains('choose an accepted player as banker')) {
+    return 'Choose a valid settlement mode before starting.';
+  }
   if (text.contains('balance') || text.contains('buy-ins and cash-outs')) {
     return 'Buy-ins and cash-outs must balance exactly before finalizing.';
   }
-  if (text.contains('cash-out') && text.contains('required')) {
+  if (text.contains('every player needs a cash-out') ||
+      (text.contains('cash-out') && text.contains('required'))) {
     return 'Enter and save every cash-out before finalizing.';
   }
   if (text.contains('expired') || text.contains('join code')) {
     return 'This join code is invalid, expired, or revoked.';
   }
-  if (text.contains('backup host')) {
+  if (text.contains('backup host') ||
+      text.contains('choose another accepted participant')) {
     return 'Choose an accepted participant who is eligible to host this game.';
   }
   if (text.contains('network') ||

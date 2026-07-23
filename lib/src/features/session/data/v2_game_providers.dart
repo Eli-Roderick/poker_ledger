@@ -18,3 +18,8 @@ final pendingGameInvitationsProvider =
           .watch(v2GameRepositoryProvider)
           .pendingInvitationsForCurrentUser();
     });
+
+final openSettlementTransfersProvider =
+    FutureProvider.autoDispose<List<OpenSettlementTransfer>>((ref) {
+      return ref.watch(v2GameRepositoryProvider).myOpenSettlementTransfers();
+    });

@@ -4,6 +4,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../features/profile/data/profile_providers.dart';
 import '../../features/help/presentation/help_screen.dart';
+import '../../features/session/data/sessions_list_providers.dart';
+import '../../features/session/data/v2_game_providers.dart';
+import '../../features/session/presentation/game_invitations_sheet.dart';
+import '../../features/session/presentation/join_accepted_buy_in_dialog.dart';
 import '../../utils/money.dart';
 import 'settings_screen.dart';
 
@@ -28,6 +32,8 @@ class ProfileScreen extends ConsumerWidget {
             userProfileStatsProvider(UserProfileParams(userId: user.id)),
           );
     final profile = profileAsync.valueOrNull;
+    final pendingInviteCount =
+        ref.watch(pendingGameInvitationsProvider).valueOrNull?.length ?? 0;
 
     return Scaffold(
       appBar: AppBar(
@@ -38,6 +44,15 @@ class ProfileScreen extends ConsumerWidget {
         ),
         title: const Text('Profile'),
         actions: [
+          IconButton(
+            tooltip: 'Game invitations',
+            onPressed: () => _showPendingInvitations(context, ref),
+            icon: Badge(
+              isLabelVisible: pendingInviteCount > 0,
+              label: Text('$pendingInviteCount'),
+              child: const Icon(Icons.notifications_outlined),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => Navigator.of(
@@ -215,6 +230,26 @@ class ProfileScreen extends ConsumerWidget {
     ];
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
+}
+
+Future<void> _showPendingInvitations(
+  BuildContext context,
+  WidgetRef ref,
+) async {
+  await showPendingInviteeInvitationsSheet(
+    context: context,
+    ref: ref,
+    onAccepted: (invitation) async {
+      ref.read(sessionsListProvider.notifier).refresh();
+      if (!context.mounted) return;
+      await showJoinAcceptedBuyInDialog(
+        context: context,
+        ref: ref,
+        sessionId: invitation.sessionId,
+        invitationId: invitation.id,
+      );
+    },
+  );
 }
 
 class _InfoRow extends StatelessWidget {

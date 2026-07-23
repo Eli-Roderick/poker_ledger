@@ -24,6 +24,7 @@ values
   ('public.return_v2_session_to_live(bigint,text,uuid)'),
   ('public.cancel_v2_session(bigint,text,uuid)'),
   ('public.set_v2_backup_host(bigint,uuid,uuid)'),
+  ('public.set_v2_settlement_preferences(bigint,text,bigint,uuid,bigint[])'),
   ('public.update_settlement_transfer_status(bigint,text,uuid)'),
   ('public.archive_group(bigint,uuid)'),
   ('public.invite_profile_to_group(bigint,uuid,uuid)'),

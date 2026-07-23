@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
-select plan(15);
+select plan(16);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -135,8 +135,12 @@ from generated;
 
 select is(
   length((select join_code from invitation_test_state)),
-  12,
-  'join code has 48 bits of random hexadecimal entropy'
+  6,
+  'join code is exactly six uppercase letters'
+);
+select ok(
+  (select join_code from invitation_test_state) ~ '^[A-Z]{6}$',
+  'join code uses A-Z characters only'
 );
 reset role;
 select isnt(

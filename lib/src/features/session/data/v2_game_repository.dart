@@ -49,7 +49,7 @@ class V2GameRepository {
           .from('session_players')
           .select(
             'id, profile_id, display_name_snapshot, paid_upfront, '
-            'accepted_at, removed_at',
+            'chosen_buy_in_cents, accepted_at, removed_at, eliminated_at',
           )
           .eq('session_id', sessionId)
           .isFilter('removed_at', null)
@@ -69,7 +69,11 @@ class V2GameRepository {
             'profiles(display_name, handle)',
           )
           .eq('session_id', sessionId)
-          .inFilter('status', ['pending_invitee', 'pending_host'])
+          .inFilter('status', [
+            'pending_invitee',
+            'pending_host',
+            'accepted_pending_buy_in',
+          ])
           .order('created_at'),
       _client
           .from('finalization_revisions')
@@ -208,14 +212,83 @@ class V2GameRepository {
     );
   }
 
+  Future<void> setBuyIn({
+    required int sessionId,
+    required int participantId,
+    required int amountCents,
+  }) async {
+    await _client.rpc(
+      'set_v2_buy_in',
+      params: {
+        'p_session_id': sessionId,
+        'p_participant_id': participantId,
+        'p_amount_cents': amountCents,
+        'p_idempotency_key': IdempotencyKey.generate(),
+      },
+    );
+  }
+
+  Future<JoinAcceptanceInfo> getJoinAcceptanceInfo(int sessionId) async {
+    final response = await _client.rpc(
+      'get_v2_join_acceptance_info',
+      params: {'p_session_id': sessionId},
+    );
+    final map = Map<String, dynamic>.from(response as Map);
+    return JoinAcceptanceInfo(
+      sessionId: _asInt(map['session_id']) ?? sessionId,
+      invitationId: map['invitation_id'] as String?,
+      gameName: (map['game_name'] as String?)?.trim().isNotEmpty == true
+          ? (map['game_name'] as String).trim()
+          : 'Poker game',
+      hostName: (map['host_name'] as String?)?.trim().isNotEmpty == true
+          ? (map['host_name'] as String).trim()
+          : 'Host',
+      phase: map['phase'] as String? ?? 'draft',
+      defaultBuyInCents: _asInt(map['default_buy_in_cents']) ?? 0,
+      currencyCode: map['currency_code'] as String? ?? 'USD',
+    );
+  }
+
+  Future<void> confirmJoinBuyIn({
+    required String invitationId,
+    required int amountCents,
+  }) async {
+    await _client.rpc(
+      'confirm_game_join_buy_in',
+      params: {
+        'p_invitation_id': invitationId,
+        'p_amount_cents': amountCents,
+        'p_idempotency_key': IdempotencyKey.generate(),
+      },
+    );
+  }
+
   Future<void> startGame({
     required int sessionId,
     required String settlementMode,
     required int? bankerParticipantId,
     Set<int> paidUpfrontParticipantIds = const {},
   }) async {
+    // Keep null banker in the map so PostgREST resolves the 5-arg signature;
+    // SQL also defaults p_banker_participant_id when the key is omitted.
+    final params = <String, Object?>{
+      'p_session_id': sessionId,
+      'p_settlement_mode': settlementMode,
+      'p_banker_participant_id': bankerParticipantId,
+      'p_idempotency_key': IdempotencyKey.generate(),
+      'p_paid_upfront_participant_ids': paidUpfrontParticipantIds.toList(),
+    };
+    await _client.rpc('start_v2_session', params: params);
+  }
+
+  Future<void> setSettlementPreferences({
+    required int sessionId,
+    required String settlementMode,
+    required int? bankerParticipantId,
+    Set<int> paidUpfrontParticipantIds = const {},
+  }) async {
     await _client.rpc(
-      'start_v2_session',
+      'set_v2_settlement_preferences',
       params: {
         'p_session_id': sessionId,
         'p_settlement_mode': settlementMode,
@@ -241,12 +314,57 @@ class V2GameRepository {
     required int sessionId,
     required int participantId,
     required int amountCents,
-  }) => _recordEvent(
+  }) => setCashOut(
     sessionId: sessionId,
     participantId: participantId,
-    type: 'cash_out',
     amountCents: amountCents,
   );
+
+  Future<void> setCashOut({
+    required int sessionId,
+    required int participantId,
+    required int amountCents,
+  }) async {
+    await _client.rpc(
+      'set_v2_cash_out',
+      params: {
+        'p_session_id': sessionId,
+        'p_participant_id': participantId,
+        'p_amount_cents': amountCents,
+        'p_idempotency_key': IdempotencyKey.generate(),
+      },
+    );
+  }
+
+  Future<void> setParticipantEliminated({
+    required int sessionId,
+    required int participantId,
+    required bool eliminated,
+  }) async {
+    await _client.rpc(
+      'set_v2_participant_eliminated',
+      params: {
+        'p_session_id': sessionId,
+        'p_participant_id': participantId,
+        'p_eliminated': eliminated,
+        'p_idempotency_key': IdempotencyKey.generate(),
+      },
+    );
+  }
+
+  Future<void> deleteLedgerEvent({
+    required int sessionId,
+    required int eventId,
+  }) async {
+    await _client.rpc(
+      'delete_v2_ledger_event',
+      params: {
+        'p_session_id': sessionId,
+        'p_event_id': eventId,
+        'p_idempotency_key': IdempotencyKey.generate(),
+      },
+    );
+  }
 
   Future<void> beginSettlement(int sessionId) async {
     await _client.rpc(
@@ -275,6 +393,30 @@ class V2GameRepository {
       params: {
         'p_session_id': sessionId,
         'p_reason': reason,
+        'p_idempotency_key': IdempotencyKey.generate(),
+      },
+    );
+  }
+
+  Future<void> leaveGame(int sessionId) async {
+    await _client.rpc(
+      'leave_v2_session',
+      params: {
+        'p_session_id': sessionId,
+        'p_idempotency_key': IdempotencyKey.generate(),
+      },
+    );
+  }
+
+  Future<void> removeParticipant({
+    required int sessionId,
+    required int participantId,
+  }) async {
+    await _client.rpc(
+      'remove_v2_participant',
+      params: {
+        'p_session_id': sessionId,
+        'p_participant_id': participantId,
         'p_idempotency_key': IdempotencyKey.generate(),
       },
     );
@@ -364,6 +506,17 @@ class V2GameRepository {
     );
   }
 
+  Future<List<OpenSettlementTransfer>> myOpenSettlementTransfers() async {
+    final rows = await _client.rpc('my_open_settlement_transfers');
+    return (rows as List)
+        .map(
+          (row) => OpenSettlementTransfer.fromMap(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList();
+  }
+
   Future<List<V2Invitation>> pendingInvitationsForCurrentUser() async {
     final rows = await _client
         .from('game_invitations')
@@ -379,6 +532,34 @@ class V2GameRepository {
         .map((row) => V2Invitation.fromMap(Map<String, dynamic>.from(row)))
         .toList();
   }
+}
+
+class JoinAcceptanceInfo {
+  final int sessionId;
+  final String? invitationId;
+  final String gameName;
+  final String hostName;
+  final String phase;
+  final int defaultBuyInCents;
+  final String currencyCode;
+
+  const JoinAcceptanceInfo({
+    required this.sessionId,
+    required this.invitationId,
+    required this.gameName,
+    required this.hostName,
+    required this.phase,
+    required this.defaultBuyInCents,
+    required this.currencyCode,
+  });
+
+  String get phaseLabel => switch (phase) {
+    'draft' => 'Lobby',
+    'live' => 'Live',
+    'settling' => 'Summary',
+    'finalized' => 'Finalized',
+    _ => phase,
+  };
 }
 
 int? _asInt(Object? value) {
