@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../utils/money.dart';
+import '../../profile/presentation/user_profile_screen.dart';
 import '../data/sessions_list_providers.dart';
 import '../data/v2_game_providers.dart';
 import '../domain/v2_game_models.dart';
@@ -19,6 +20,91 @@ import 'game_invitations_sheet.dart';
 import 'v2_invite_sheet.dart';
 
 const _kSilentHostReason = 'Host action';
+
+void _openParticipantProfile(
+  BuildContext context,
+  V2Participant participant,
+) {
+  final profileId = participant.profileId;
+  if (profileId == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This player has no public profile.')),
+    );
+    return;
+  }
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => UserProfileScreen(
+        userId: profileId,
+        initialDisplayName: participant.displayName,
+        playerName: participant.displayName,
+      ),
+    ),
+  );
+}
+
+Future<void> _showParticipantHostActionsSheet({
+  required BuildContext context,
+  required V2Participant participant,
+  required bool canAssignBackup,
+  required bool canRemove,
+  required bool isBackup,
+  required ValueChanged<V2Participant>? onSetBackup,
+  required ValueChanged<V2Participant>? onRemove,
+}) async {
+  if (!canAssignBackup && !canRemove) return;
+  await HapticFeedback.mediumImpact();
+  if (!context.mounted) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(participant.displayName),
+              subtitle: Text(
+                isBackup ? 'Backup host' : 'Player options',
+              ),
+            ),
+            if (canAssignBackup && onSetBackup != null)
+              ListTile(
+                leading: Icon(
+                  isBackup ? Icons.verified_user : Icons.person_add_alt_1,
+                ),
+                title: Text(
+                  isBackup ? 'Backup host assigned' : 'Assign backup host',
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  onSetBackup(participant);
+                },
+              ),
+            if (canRemove && onRemove != null)
+              ListTile(
+                leading: Icon(
+                  Icons.person_remove_outlined,
+                  color: Theme.of(sheetContext).colorScheme.error,
+                ),
+                title: Text(
+                  'Remove player',
+                  style: TextStyle(
+                    color: Theme.of(sheetContext).colorScheme.error,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  onRemove(participant);
+                },
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
 
 class V2GameFlowScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -1270,87 +1356,91 @@ class _LobbyPageState extends State<_LobbyPage> {
                     (isHost || participant.profileId == widget.currentUserId);
                 final controller = _buyInControllers[participant.id]!;
                 final buyInCents = _displayBuyInCents(participant);
+                final canAssignBackup =
+                    isHost &&
+                    showStartBar &&
+                    participant.profileId != null &&
+                    participant.profileId != detail.game.currentHostId;
+                final canRemove =
+                    onRemoveParticipant != null &&
+                    _canKickParticipant(detail, participant);
+                final hasPlayerActions = canAssignBackup || canRemove;
+                final isBackup =
+                    participant.profileId == detail.game.backupHostId;
                 return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const CircleAvatar(child: Icon(Icons.person)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                participant.displayName,
-                                style: theme.textTheme.titleSmall,
-                              ),
-                              Text(
-                                participant.profileId ==
-                                        detail.game.backupHostId
-                                    ? 'Accepted · Backup host'
-                                    : 'Accepted',
-                              ),
-                              if (!detail.game.isDraft)
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () =>
+                        _openParticipantProfile(context, participant),
+                    onLongPress: hasPlayerActions
+                        ? () => _showParticipantHostActionsSheet(
+                            context: context,
+                            participant: participant,
+                            canAssignBackup: canAssignBackup,
+                            canRemove: canRemove,
+                            isBackup: isBackup,
+                            onSetBackup: widget.onSetBackup,
+                            onRemove: onRemoveParticipant,
+                          )
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const CircleAvatar(child: Icon(Icons.person)),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  'Buy-in ${Money.formatCents(buyInCents, symbol: '\$')}',
-                                  style: theme.textTheme.bodySmall,
+                                  participant.displayName,
+                                  style: theme.textTheme.titleSmall,
                                 ),
-                            ],
-                          ),
-                        ),
-                        if (isHost &&
-                            showStartBar &&
-                            participant.profileId != null &&
-                            participant.profileId !=
-                                detail.game.currentHostId)
-                          IconButton(
-                            tooltip: 'Assign backup host',
-                            onPressed: () => widget.onSetBackup(participant),
-                            icon: Icon(
-                              participant.profileId ==
-                                      detail.game.backupHostId
-                                  ? Icons.verified_user
-                                  : Icons.person_add_alt_1,
-                            ),
-                          ),
-                        if (onRemoveParticipant != null &&
-                            _canKickParticipant(detail, participant))
-                          IconButton(
-                            tooltip: 'Remove player',
-                            onPressed: () => onRemoveParticipant(participant),
-                            icon: const Icon(Icons.person_remove_outlined),
-                          ),
-                        if (detail.game.isDraft) ...[
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 120,
-                            child: TextField(
-                              controller: controller,
-                              readOnly: !canEditThis,
-                              decoration: const InputDecoration(
-                                labelText: 'Buy-in',
-                                isDense: true,
-                                border: OutlineInputBorder(),
-                              ),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                              onChanged: canEditThis
-                                  ? (raw) =>
-                                        _scheduleBuyInSave(participant, raw)
-                                  : null,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                  RegExp(r'^\d+(\.\d{0,2})?$'),
+                                Text(
+                                  isBackup
+                                      ? 'Accepted · Backup host'
+                                      : 'Accepted',
                                 ),
+                                if (!detail.game.isDraft)
+                                  Text(
+                                    'Buy-in ${Money.formatCents(buyInCents, symbol: '\$')}',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
                               ],
                             ),
                           ),
+                          if (detail.game.isDraft) ...[
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 120,
+                              child: TextField(
+                                controller: controller,
+                                readOnly: !canEditThis,
+                                decoration: const InputDecoration(
+                                  labelText: 'Buy-in',
+                                  isDense: true,
+                                  border: OutlineInputBorder(),
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                onChanged: canEditThis
+                                    ? (raw) =>
+                                          _scheduleBuyInSave(participant, raw)
+                                    : null,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d+(\.\d{0,2})?$'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 );
@@ -1482,70 +1572,102 @@ class _LivePage extends StatelessWidget {
                     onRemoveParticipant != null &&
                     _canKickParticipant(detail, participant);
                 final showHostActions =
-                    canRecordRebuys || onToggleOut != null || canKick;
+                    canRecordRebuys || onToggleOut != null;
                 return Card(
+                  clipBehavior: Clip.antiAlias,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () =>
+                                _openParticipantProfile(context, participant),
+                            onLongPress: canKick
+                                ? () => _showParticipantHostActionsSheet(
+                                    context: context,
+                                    participant: participant,
+                                    canAssignBackup: false,
+                                    canRemove: true,
+                                    isBackup: participant.profileId ==
+                                        detail.game.backupHostId,
+                                    onSetBackup: null,
+                                    onRemove: onRemoveParticipant,
+                                  )
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      participant.displayName,
-                                      style: theme.textTheme.titleSmall,
-                                    ),
-                                  ),
-                                  if (participant.isOut)
-                                    Padding(
-                                      padding: const EdgeInsets.only(left: 6),
-                                      child: Chip(
-                                        visualDensity: VisualDensity.compact,
-                                        materialTapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        label: const Text('Out'),
-                                        avatar: Icon(
-                                          Icons.block,
-                                          size: 14,
-                                          color: theme.colorScheme.error,
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          participant.displayName,
+                                          style: theme.textTheme.titleSmall,
                                         ),
-                                        labelStyle: theme.textTheme.labelSmall
-                                            ?.copyWith(
+                                      ),
+                                      if (participant.isOut)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            left: 6,
+                                          ),
+                                          child: Chip(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            materialTapTargetSize:
+                                                MaterialTapTargetSize
+                                                    .shrinkWrap,
+                                            label: const Text('Out'),
+                                            avatar: Icon(
+                                              Icons.block,
+                                              size: 14,
                                               color: theme.colorScheme.error,
                                             ),
-                                        side: BorderSide(
-                                          color: theme.colorScheme.error
-                                              .withValues(alpha: 0.4),
+                                            labelStyle: theme
+                                                .textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color:
+                                                      theme.colorScheme.error,
+                                                ),
+                                            side: BorderSide(
+                                              color: theme.colorScheme.error
+                                                  .withValues(alpha: 0.4),
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                          ),
+                                        )
+                                      else if (activeCashOut)
+                                        const Padding(
+                                          padding: EdgeInsets.only(left: 6),
+                                          child: Chip(
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            materialTapTargetSize:
+                                                MaterialTapTargetSize
+                                                    .shrinkWrap,
+                                            avatar: Icon(
+                                              Icons.check,
+                                              size: 14,
+                                            ),
+                                            label: Text('Cashed out'),
+                                            padding: EdgeInsets.zero,
+                                          ),
                                         ),
-                                        padding: EdgeInsets.zero,
-                                      ),
-                                    )
-                                  else if (activeCashOut)
-                                    const Padding(
-                                      padding: EdgeInsets.only(left: 6),
-                                      child: Chip(
-                                        visualDensity: VisualDensity.compact,
-                                        materialTapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        avatar: Icon(Icons.check, size: 14),
-                                        label: Text('Cashed out'),
-                                        padding: EdgeInsets.zero,
-                                      ),
-                                    ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Buy-ins ${Money.formatCents(totals.buyInsCents, symbol: '\$')}'
+                                    '${activeCashOut ? '  •  Cash-out ${Money.formatCents(totals.cashOutCents, symbol: '\$')}' : ''}',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
                                 ],
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Buy-ins ${Money.formatCents(totals.buyInsCents, symbol: '\$')}'
-                                '${activeCashOut ? '  •  Cash-out ${Money.formatCents(totals.cashOutCents, symbol: '\$')}' : ''}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                         if (showHostActions) ...[
@@ -1561,15 +1683,9 @@ class _LivePage extends StatelessWidget {
                           if (onToggleOut != null)
                             TextButton(
                               onPressed: () => onToggleOut!(participant),
-                              child: Text(participant.isOut ? 'Undo out' : 'Out'),
-                            ),
-                          if (canKick)
-                            IconButton(
-                              tooltip: 'Remove player',
-                              visualDensity: VisualDensity.compact,
-                              onPressed: () =>
-                                  onRemoveParticipant!(participant),
-                              icon: const Icon(Icons.person_remove_outlined),
+                              child: Text(
+                                participant.isOut ? 'Undo out' : 'Out',
+                              ),
                             ),
                         ],
                       ],
